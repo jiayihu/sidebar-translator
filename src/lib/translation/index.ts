@@ -1,14 +1,23 @@
 import { getSettings } from '../storage';
-import { ChromeAITranslator } from './chrome-ai';
+import { ChromeAITranslator, isLanguageDetectorAvailable } from './chrome-ai';
 import { DeepLTranslator } from './deepl';
 import { GoogleTranslator } from './google';
 import type { ITranslator } from './types';
 
 export type { ITranslator };
 
-export async function getTranslator(): Promise<ITranslator> {
+/**
+ * Returns the best available translator for the given source language.
+ * When sourceLang is 'auto', Chrome AI is only used if the Language Detector
+ * API is also available (required for auto-detection). Otherwise falls through
+ * to DeepL/Google which support auto-detection natively.
+ */
+export async function getTranslator(sourceLang = 'auto'): Promise<ITranslator> {
   if (typeof Translator !== 'undefined') {
-    return new ChromeAITranslator();
+    const canAutoDetect = sourceLang !== 'auto' || isLanguageDetectorAvailable();
+    if (canAutoDetect) {
+      return new ChromeAITranslator();
+    }
   }
 
   const settings = await getSettings();

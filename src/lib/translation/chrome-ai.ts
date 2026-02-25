@@ -1,6 +1,6 @@
 import type { ITranslator } from './types';
 
-// Augment the global scope with Chrome AI Translator API types
+// Augment the global scope with Chrome AI Translator + Language Detector API types
 declare global {
   interface Translator {
     translate(text: string): Promise<string>;
@@ -18,40 +18,84 @@ declare global {
     create(options: TranslatorCreateOptions): Promise<Translator>;
   }
 
+  interface LanguageDetectionResult {
+    detectedLanguage: string;
+    confidence: number;
+  }
+
+  interface LanguageDetector {
+    detect(text: string): Promise<LanguageDetectionResult[]>;
+    destroy(): void;
+  }
+
+  interface LanguageDetectorFactory {
+    availability(): Promise<string>;
+    create(): Promise<LanguageDetector>;
+  }
+
   // eslint-disable-next-line no-var
   var Translator: TranslatorFactory;
+  // eslint-disable-next-line no-var
+  var LanguageDetector: LanguageDetectorFactory | undefined;
+}
+
+export function isLanguageDetectorAvailable(): boolean {
+  return typeof LanguageDetector !== 'undefined';
 }
 
 export class ChromeAITranslator implements ITranslator {
-  private cache = new Map<string, Translator>();
+  private translatorCache = new Map<string, Translator>();
+  private detectorInstance: LanguageDetector | null = null;
+
+  private async detectLanguage(texts: string[]): Promise<string> {
+    if (typeof LanguageDetector === 'undefined') {
+      throw new Error(
+        'Chrome AI: auto-detection requires the Language Detector API, which is not available in this browser. Please select a source language manually.',
+      );
+    }
+
+    if (!this.detectorInstance) {
+      this.detectorInstance = await LanguageDetector.create();
+    }
+
+    const sampleText = texts.find((t) => t.trim()) ?? '';
+    const results = await this.detectorInstance.detect(sampleText);
+    return results[0]?.detectedLanguage ?? 'en';
+  }
 
   async translate(texts: string[], sourceLang: string, targetLang: string): Promise<string[]> {
-    const cacheKey = `${sourceLang}:${targetLang}`;
-    let translator = this.cache.get(cacheKey);
+    const actualSourceLang =
+      sourceLang === 'auto' ? await this.detectLanguage(texts) : sourceLang;
+
+    const cacheKey = `${actualSourceLang}:${targetLang}`;
+    let translator = this.translatorCache.get(cacheKey);
 
     if (!translator) {
       const availability = await Translator.availability({
-        sourceLanguage: sourceLang === 'auto' ? 'und' : sourceLang,
+        sourceLanguage: actualSourceLang,
         targetLanguage: targetLang,
       });
 
       if (availability === 'unavailable') {
-        throw new Error(`Chrome AI Translator: language pair ${sourceLang}→${targetLang} unavailable`);
+        throw new Error(
+          `Chrome AI Translator: language pair ${actualSourceLang}→${targetLang} is not available.`,
+        );
       }
 
       translator = await Translator.create({
-        sourceLanguage: sourceLang === 'auto' ? 'und' : sourceLang,
+        sourceLanguage: actualSourceLang,
         targetLanguage: targetLang,
-        monitor: availability === 'downloadable'
-          ? (m) => {
-              m.addEventListener('downloadprogress', (e) => {
-                console.info('[SidebarTranslator] Downloading language model...', e);
-              });
-            }
-          : undefined,
+        monitor:
+          availability === 'downloadable'
+            ? (m) => {
+                m.addEventListener('downloadprogress', (e) => {
+                  console.info('[SidebarTranslator] Downloading language model...', e);
+                });
+              }
+            : undefined,
       });
 
-      this.cache.set(cacheKey, translator);
+      this.translatorCache.set(cacheKey, translator);
     }
 
     const results: string[] = [];

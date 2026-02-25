@@ -9,6 +9,21 @@ import styles from './App.module.css';
 
 type Status = 'idle' | 'extracting' | 'translating' | 'ready' | 'error';
 
+async function translateRaw(
+  rawBlocks: TextBlock[],
+  sourceLang: string,
+  targetLang: string,
+): Promise<TranslationBlock[]> {
+  const translator = await getTranslator(sourceLang);
+  const texts = rawBlocks.map((b) => b.text);
+  const translated = await translator.translate(texts, sourceLang, targetLang);
+  return rawBlocks.map((b, i) => ({
+    id: b.id,
+    original: b.text,
+    translated: translated[i] ?? b.text,
+  }));
+}
+
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -19,14 +34,79 @@ export default function App() {
 
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const portRef = useRef<chrome.runtime.Port | null>(null);
+  // Store raw blocks so language changes can re-translate without re-extracting
+  const rawBlocksRef = useRef<TextBlock[]>([]);
+  // Track whether initial extraction has run
+  const initializedRef = useRef(false);
 
-  // ─── Load persisted settings ────────────────────────────────────────────────
-  useEffect(() => {
-    getSettings().then((s) => {
-      setSourceLang(s.sourceLanguage);
-      setTargetLang(s.targetLanguage);
-    });
+  // ─── Re-translate stored raw blocks with given languages ────────────────
+  const retranslate = useCallback(async (src: string, tgt: string) => {
+    const raw = rawBlocksRef.current;
+    if (raw.length === 0) return;
+
+    setStatus('translating');
+    setErrorMsg('');
+    try {
+      const translated = await translateRaw(raw, src, tgt);
+      setBlocks(translated);
+      setStatus('ready');
+    } catch (err) {
+      console.error('[SidebarTranslator] Retranslation failed', err);
+      setErrorMsg(err instanceof Error ? err.message : String(err));
+      setStatus('error');
+    }
   }, []);
+
+  // ─── Extract from DOM + translate ───────────────────────────────────────
+  const extractAndTranslate = useCallback(
+    async (src: string, tgt: string) => {
+      setStatus('extracting');
+      setBlocks([]);
+      setErrorMsg('');
+      rawBlocksRef.current = [];
+
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: 'EXTRACT_TEXT',
+        } satisfies Message);
+        if (!response || response.type !== 'PAGE_TEXT') {
+          throw new Error('Unexpected response from content script');
+        }
+
+        const rawBlocks: TextBlock[] = response.blocks;
+        rawBlocksRef.current = rawBlocks;
+
+        if (rawBlocks.length === 0) {
+          setStatus('ready');
+          return;
+        }
+
+        setStatus('translating');
+        const translated = await translateRaw(rawBlocks, src, tgt);
+        setBlocks(translated);
+        setStatus('ready');
+      } catch (err) {
+        console.error('[SidebarTranslator] Extract/translate failed', err);
+        setErrorMsg(err instanceof Error ? err.message : String(err));
+        setStatus('error');
+      }
+    },
+    [],
+  );
+
+  // ─── Initialize: load settings, then extract ────────────────────────────
+  useEffect(() => {
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    getSettings().then((s) => {
+      const src = s.sourceLanguage;
+      const tgt = s.targetLanguage;
+      setSourceLang(src);
+      setTargetLang(tgt);
+      extractAndTranslate(src, tgt);
+    });
+  }, [extractAndTranslate]);
 
   // ─── Connect to background via long-lived port ───────────────────────────
   useEffect(() => {
@@ -45,11 +125,36 @@ export default function App() {
       }
 
       if (message.type === 'NEW_TEXT_BLOCKS') {
-        translateAndAppend(message.blocks);
+        const raw = message.blocks;
+        rawBlocksRef.current = [...rawBlocksRef.current, ...raw];
+        const src = sourceLangRef.current;
+        const tgt = targetLangRef.current;
+        translateRaw(raw, src, tgt)
+          .then((newBlocks) => {
+            setBlocks((prev) => {
+              const existingIds = new Set(prev.map((b) => b.id));
+              const toAdd = newBlocks.filter((b) => !existingIds.has(b.id));
+              return toAdd.length ? [...prev, ...toAdd] : prev;
+            });
+          })
+          .catch((err) => console.error('[SidebarTranslator] Failed to translate new blocks', err));
       }
 
       if (message.type === 'TEXT_UPDATED') {
-        translateAndUpdate(message.id, message.text);
+        const { id, text } = message;
+        rawBlocksRef.current = rawBlocksRef.current.map((b) =>
+          b.id === id ? { ...b, text } : b,
+        );
+        const src = sourceLangRef.current;
+        const tgt = targetLangRef.current;
+        translateRaw([{ id, text }], src, tgt)
+          .then(([updated]) => {
+            if (!updated) return;
+            setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)));
+          })
+          .catch((err) =>
+            console.error('[SidebarTranslator] Failed to re-translate block', id, err),
+          );
       }
     });
 
@@ -57,91 +162,26 @@ export default function App() {
       port.disconnect();
       portRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceLang, targetLang]);
-
-  // ─── Translation helpers ─────────────────────────────────────────────────
-  const translateBlocks = useCallback(
-    async (rawBlocks: TextBlock[]): Promise<TranslationBlock[]> => {
-      const translator = await getTranslator();
-      const texts = rawBlocks.map((b) => b.text);
-      const translated = await translator.translate(texts, sourceLang, targetLang);
-      return rawBlocks.map((b, i) => ({
-        id: b.id,
-        original: b.text,
-        translated: translated[i] ?? b.text,
-      }));
-    },
-    [sourceLang, targetLang],
-  );
-
-  const translateAndAppend = useCallback(
-    async (rawBlocks: TextBlock[]) => {
-      try {
-        const newBlocks = await translateBlocks(rawBlocks);
-        setBlocks((prev) => {
-          const existingIds = new Set(prev.map((b) => b.id));
-          const toAdd = newBlocks.filter((b) => !existingIds.has(b.id));
-          return toAdd.length ? [...prev, ...toAdd] : prev;
-        });
-      } catch (err) {
-        console.error('[SidebarTranslator] Failed to translate new blocks', err);
-      }
-    },
-    [translateBlocks],
-  );
-
-  const translateAndUpdate = useCallback(
-    async (id: string, text: string) => {
-      try {
-        const translator = await getTranslator();
-        const [translated] = await translator.translate([text], sourceLang, targetLang);
-        setBlocks((prev) =>
-          prev.map((b) =>
-            b.id === id ? { ...b, original: text, translated: translated ?? text } : b,
-          ),
-        );
-      } catch (err) {
-        console.error('[SidebarTranslator] Failed to re-translate block', id, err);
-      }
-    },
-    [sourceLang, targetLang],
-  );
-
-  // ─── Extract & translate page text ──────────────────────────────────────
-  const extractAndTranslate = useCallback(async () => {
-    setStatus('extracting');
-    setBlocks([]);
-    setErrorMsg('');
-
-    try {
-      const response = await chrome.runtime.sendMessage({ type: 'EXTRACT_TEXT' } satisfies Message);
-      if (!response || response.type !== 'PAGE_TEXT') {
-        throw new Error('Unexpected response from content script');
-      }
-
-      const rawBlocks: TextBlock[] = response.blocks;
-      if (rawBlocks.length === 0) {
-        setStatus('ready');
-        return;
-      }
-
-      setStatus('translating');
-      const translated = await translateBlocks(rawBlocks);
-      setBlocks(translated);
-      setStatus('ready');
-    } catch (err) {
-      console.error('[SidebarTranslator] Extract/translate failed', err);
-      setErrorMsg(err instanceof Error ? err.message : String(err));
-      setStatus('error');
-    }
-  }, [translateBlocks]);
-
-  // ─── Auto-run on mount ───────────────────────────────────────────────────
-  useEffect(() => {
-    extractAndTranslate();
+    // Port only needs to be created once; language values are accessed via refs below
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Refs so the port message handler always sees current language values
+  const sourceLangRef = useRef(sourceLang);
+  const targetLangRef = useRef(targetLang);
+  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
+  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
+
+  // ─── Language change → re-translate stored blocks ───────────────────────
+  const isFirstLangRender = useRef(true);
+  useEffect(() => {
+    // Skip the very first render (initialization handles the first translation)
+    if (isFirstLangRender.current) {
+      isFirstLangRender.current = false;
+      return;
+    }
+    retranslate(sourceLang, targetLang);
+  }, [sourceLang, targetLang, retranslate]);
 
   // ─── Sidebar ↔ page highlight ────────────────────────────────────────────
   const handleItemMouseEnter = useCallback((id: string) => {
@@ -152,7 +192,7 @@ export default function App() {
     chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
   }, []);
 
-  // ─── Language change ─────────────────────────────────────────────────────
+  // ─── Language change handlers ─────────────────────────────────────────────
   const handleSourceChange = useCallback((lang: string) => {
     setSourceLang(lang);
     saveSettings({ sourceLanguage: lang });
@@ -163,13 +203,10 @@ export default function App() {
     saveSettings({ targetLanguage: lang });
   }, []);
 
-  // Re-translate when languages change
-  useEffect(() => {
-    if (status === 'ready' || status === 'error') {
-      extractAndTranslate();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceLang, targetLang]);
+  // ─── Refresh button ───────────────────────────────────────────────────────
+  const handleRefresh = useCallback(() => {
+    extractAndTranslate(sourceLangRef.current, targetLangRef.current);
+  }, [extractAndTranslate]);
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
@@ -178,7 +215,7 @@ export default function App() {
         <h1 className={styles.title}>Sidebar Translator</h1>
         <button
           className={styles.refreshBtn}
-          onClick={extractAndTranslate}
+          onClick={handleRefresh}
           disabled={status === 'extracting' || status === 'translating'}
           title="Re-scan and translate page"
         >
