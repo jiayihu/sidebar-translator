@@ -3,40 +3,55 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: var(--cream-1);
 }
+
+/* ── Header ──────────────────────────────────────────────────────── */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
+  padding: 18px 18px 14px;
+  background: var(--cream-0);
+  box-shadow: var(--shadow-xs);
+  position: relative;
+  z-index: 1;
 }
 
 .title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  letter-spacing: -0.01em;
+  font-family: var(--font-text);
+  font-size: 15px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--ink);
+  letter-spacing: 0.01em;
 }
 
 .refreshBtn {
-  background: none;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--cream-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
   cursor: pointer;
-  color: #6b7280;
-  line-height: 1.4;
-  transition: background 0.15s;
+  color: var(--stone-3);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  flex-shrink: 0;
 }
 
 .refreshBtn:hover:not(:disabled) {
-  background: #f3f4f6;
-  color: #374151;
+  background: var(--cream-3);
+  color: var(--ink);
+}
+
+.refreshBtn:active:not(:disabled) {
+  transform: rotate(180deg);
 }
 
 .refreshBtn:disabled {
@@ -44,16 +59,26 @@
   cursor: not-allowed;
 }
 
+/* ── Status bar ──────────────────────────────────────────────────── */
+
 .statusBar {
-  padding: 6px 12px;
-  font-size: 12px;
-  color: #6b7280;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 7px 18px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: var(--stone-2);
+  background: var(--cream-2);
+  border-bottom: 1px solid var(--cream-3);
+  animation: fadeSlideIn 0.2s ease;
 }
 
 .statusBar.error {
-  color: #dc2626;
-  background: #fef2f2;
-  border-bottom-color: #fecaca;
+  color: var(--rose);
+  background: var(--rose-light);
+  border-bottom-color: var(--rose-mid);
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
