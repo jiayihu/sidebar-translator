@@ -21,10 +21,10 @@ chrome.action.onClicked.addListener((tab) => {
   } else {
     // Panel is closed → open it for this specific tab
     openedTabs.add(tabId);
-    chrome.sidePanel
-      .setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH })
-      .then(() => chrome.sidePanel.open({ tabId }))
-      .catch(console.error);
+    // Both calls must stay in the same synchronous tick so open() is still
+    // within the user-gesture context. Chaining with .then() loses it.
+    chrome.sidePanel.setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH }).catch(console.error);
+    chrome.sidePanel.open({ tabId }).catch(console.error);
   }
 });
 
