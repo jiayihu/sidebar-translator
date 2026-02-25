@@ -1,7 +1,14 @@
 import type { Message } from '../lib/messages';
 
-// Open sidebar when the toolbar icon is clicked
-chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
+// Open the sidebar for the specific tab the user clicked on.
+// Per-tab open() means Chrome closes the panel when switching to another tab
+// and restores it when switching back — unlike the global openPanelOnActionClick behavior.
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
+
+chrome.action.onClicked.addListener((tab) => {
+  if (tab.id == null) return;
+  chrome.sidePanel.open({ tabId: tab.id }).catch(console.error);
+});
 
 // Track the side panel port so we can forward messages to it
 let sidePanelPort: chrome.runtime.Port | null = null;
