@@ -67,6 +67,11 @@ export class ChromeAITranslator implements ITranslator {
     const actualSourceLang =
       sourceLang === 'auto' ? await this.detectLanguage(texts) : sourceLang;
 
+    // Source and target are the same language — return originals unchanged
+    if (actualSourceLang === targetLang) {
+      return texts;
+    }
+
     const cacheKey = `${actualSourceLang}:${targetLang}`;
     let translator = this.translatorCache.get(cacheKey);
 

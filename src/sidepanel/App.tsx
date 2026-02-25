@@ -14,6 +14,11 @@ async function translateRaw(
   sourceLang: string,
   targetLang: string,
 ): Promise<TranslationBlock[]> {
+  // Same language on both sides — return originals without hitting any API
+  if (sourceLang !== 'auto' && sourceLang === targetLang) {
+    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text }));
+  }
+
   const translator = await getTranslator(sourceLang);
   const texts = rawBlocks.map((b) => b.text);
   const translated = await translator.translate(texts, sourceLang, targetLang);
@@ -45,6 +50,7 @@ export default function App() {
     if (raw.length === 0) return;
 
     setStatus('translating');
+    setBlocks([]);
     setErrorMsg('');
     try {
       const translated = await translateRaw(raw, src, tgt);
@@ -116,6 +122,10 @@ export default function App() {
     port.onMessage.addListener((message: Message) => {
       if (message.type === 'ELEMENT_HOVERED') {
         setActiveId(message.id);
+        if (message.id !== null) {
+          const el = itemRefs.current.get(message.id);
+          el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
       }
 
       if (message.type === 'ELEMENT_CLICKED') {
