@@ -1,0 +1,32 @@
+.item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background 0.15s ease;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: #f9fafb;
+}
+
+.item.active {
+  background: rgba(79, 70, 229, 0.08);
+  border-left: 3px solid #4f46e5;
+  padding-left: 9px;
+}
+
+.translated {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #111827;
+  font-weight: 500;
+}
+
+.original {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #9ca3af;
+  font-style: italic;
+}
