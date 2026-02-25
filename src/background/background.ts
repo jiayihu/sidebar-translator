@@ -1,25 +1,52 @@
 import type { Message } from '../lib/messages';
 
-// Open the sidebar for the specific tab the user clicked on.
-// Per-tab open() means Chrome closes the panel when switching to another tab
-// and restores it when switching back — unlike the global openPanelOnActionClick behavior.
+const SIDEPANEL_PATH = 'src/sidepanel/index.html';
+
+// Tracks tabs that currently have the panel open so the action button toggles correctly
+const openedTabs = new Set<number>();
+
+let sidePanelPort: chrome.runtime.Port | null = null;
+
+// We handle the action click ourselves to get per-tab, toggle behaviour
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
 
 chrome.action.onClicked.addListener((tab) => {
   if (tab.id == null) return;
-  chrome.sidePanel.open({ tabId: tab.id }).catch(console.error);
+  const tabId = tab.id;
+
+  if (openedTabs.has(tabId)) {
+    // Panel is open → close it
+    openedTabs.delete(tabId);
+    chrome.sidePanel.setOptions({ tabId, enabled: false }).catch(console.error);
+  } else {
+    // Panel is closed → open it for this specific tab
+    openedTabs.add(tabId);
+    chrome.sidePanel
+      .setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH })
+      .then(() => chrome.sidePanel.open({ tabId }))
+      .catch(console.error);
+  }
 });
 
-// Track the side panel port so we can forward messages to it
-let sidePanelPort: chrome.runtime.Port | null = null;
-
 chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === 'sidepanel') {
-    sidePanelPort = port;
+  if (port.name !== 'sidepanel') return;
+  sidePanelPort = port;
+
+  // Capture the active tab at connect time. When the port later disconnects
+  // (user pressed X to close the panel), remove the tab from openedTabs so
+  // the next action click re-opens rather than double-toggling to close.
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tabId = tabs[0]?.id;
     port.onDisconnect.addListener(() => {
       sidePanelPort = null;
+      if (tabId != null) openedTabs.delete(tabId);
     });
-  }
+  });
+});
+
+// Clean up when a tab is closed
+chrome.tabs.onRemoved.addListener((tabId) => {
+  openedTabs.delete(tabId);
 });
 
 // Relay messages between content script and side panel
@@ -27,7 +54,6 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   const tabId = sender.tab?.id;
 
   if (message.type === 'EXTRACT_TEXT') {
-    // Forwarded from side panel to the active tab's content script
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
@@ -36,7 +62,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
         });
       }
     });
-    return true; // Keep channel open for async response
+    return true;
   }
 
   if (
@@ -45,7 +71,6 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'NEW_TEXT_BLOCKS' ||
     message.type === 'TEXT_UPDATED'
   ) {
-    // Forward from content script → side panel
     if (sidePanelPort) {
       sidePanelPort.postMessage(message);
     }
@@ -53,7 +78,6 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   }
 
   if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT') {
-    // Forward from side panel → content script (active tab)
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
@@ -63,9 +87,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (tabId != null && (message.type === 'PAGE_TEXT')) {
-    // Already handled via sendResponse pattern above; this path handles if content script
-    // sends PAGE_TEXT independently (not used currently but kept for extensibility)
+  if (tabId != null && message.type === 'PAGE_TEXT') {
     if (sidePanelPort) {
       sidePanelPort.postMessage(message);
     }
