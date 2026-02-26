@@ -29,9 +29,11 @@ interface LanguagePickerProps {
   targetLang: string;
   onSourceChange: (lang: string) => void;
   onTargetChange: (lang: string) => void;
+  onTranslate: () => void;
+  isLoading: boolean;
 }
 
-export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTargetChange }: LanguagePickerProps) {
+export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTargetChange, onTranslate, isLoading }: LanguagePickerProps) {
   return (
     <div className={styles.container}>
       <div className={styles.selectWrapper}>
@@ -67,6 +69,15 @@ export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTarge
           ))}
         </select>
       </div>
+
+      <button
+        className={styles.translateBtn}
+        onClick={onTranslate}
+        disabled={isLoading}
+        title="Translate page"
+      >
+        ▶
+      </button>
     </div>
   );
 }

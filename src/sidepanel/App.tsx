@@ -29,6 +29,8 @@ async function translateRaw(
   }));
 }
 
+const SKELETON_COUNT = 5;
+
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -75,7 +77,10 @@ export default function App() {
         const response = await chrome.runtime.sendMessage({
           type: 'EXTRACT_TEXT',
         } satisfies Message);
-        if (!response || response.type !== 'PAGE_TEXT') {
+        if (!response) {
+          throw new Error('Could not reach the page. Try refreshing it and reopening the translator.');
+        }
+        if (response.type !== 'PAGE_TEXT') {
           throw new Error('Unexpected response from content script');
         }
 
@@ -121,10 +126,14 @@ export default function App() {
 
     port.onMessage.addListener((message: Message) => {
       if (message.type === 'ELEMENT_HOVERED') {
-        setActiveId(message.id);
-        if (message.id !== null) {
+        if (message.id === null) {
+          setActiveId(null);
+        } else {
           const el = itemRefs.current.get(message.id);
-          el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          if (el) {
+            setActiveId(message.id);
+            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
         }
       }
 
@@ -218,15 +227,20 @@ export default function App() {
     extractAndTranslate(sourceLangRef.current, targetLangRef.current);
   }, [extractAndTranslate]);
 
+  const isLoading = status === 'idle' || status === 'extracting' || status === 'translating';
+
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className={styles.app}>
       <header className={styles.header}>
-        <h1 className={styles.title}>Sidebar Translator</h1>
+        <div className={styles.titleGroup}>
+          <span className={styles.titleEyebrow}>Translate</span>
+          <h1 className={styles.title}>Sidebar</h1>
+        </div>
         <button
-          className={styles.refreshBtn}
+          className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
           onClick={handleRefresh}
-          disabled={status === 'extracting' || status === 'translating'}
+          disabled={isLoading}
           title="Re-scan and translate page"
         >
           ↺
@@ -238,25 +252,46 @@ export default function App() {
         targetLang={targetLang}
         onSourceChange={handleSourceChange}
         onTargetChange={handleTargetChange}
+        onTranslate={handleRefresh}
+        isLoading={isLoading}
       />
 
-      {status === 'extracting' && (
-        <div className={styles.statusBar}>Extracting text…</div>
+      {isLoading && (
+        <div className={styles.beam}>
+          <span className={styles.beamChip}>{sourceLang}</span>
+          <div className={styles.beamTrack}>
+            <div className={styles.beamFill} />
+          </div>
+          <span className={styles.beamChip}>{targetLang}</span>
+        </div>
       )}
-      {status === 'translating' && (
-        <div className={styles.statusBar}>Translating {blocks.length} blocks…</div>
-      )}
+
       {status === 'error' && (
         <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
       )}
 
-      <TranslationList
-        blocks={blocks}
-        activeId={activeId}
-        itemRefs={itemRefs}
-        onItemMouseEnter={handleItemMouseEnter}
-        onItemMouseLeave={handleItemMouseLeave}
-      />
+      {isLoading && blocks.length === 0 ? (
+        <div className={styles.skeletonList}>
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <div
+              key={i}
+              className={styles.skeletonItem}
+              style={{ animationDelay: `${i * 160}ms` }}
+            >
+              <div className={styles.skeletonLine} style={{ width: `${72 + (i % 3) * 10}%` }} />
+              <div className={styles.skeletonLineShort} style={{ width: `${40 + (i % 4) * 8}%` }} />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <TranslationList
+          blocks={blocks}
+          activeId={activeId}
+          itemRefs={itemRefs}
+          onItemMouseEnter={handleItemMouseEnter}
+          onItemMouseLeave={handleItemMouseLeave}
+        />
+      )}
     </div>
   );
 }

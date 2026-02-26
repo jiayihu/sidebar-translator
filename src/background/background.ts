@@ -56,11 +56,17 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   if (message.type === 'EXTRACT_TEXT') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
-      if (activeTab?.id != null) {
-        chrome.tabs.sendMessage(activeTab.id, message, (response) => {
-          sendResponse(response);
-        });
+      if (activeTab?.id == null) {
+        sendResponse(null);
+        return;
       }
+      chrome.tabs.sendMessage(activeTab.id, message, (response) => {
+        if (chrome.runtime.lastError) {
+          sendResponse(null);
+          return;
+        }
+        sendResponse(response);
+      });
     });
     return true;
   }
@@ -81,7 +87,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
-        chrome.tabs.sendMessage(activeTab.id, message);
+        chrome.tabs.sendMessage(activeTab.id, message, () => {
+          void chrome.runtime.lastError; // acknowledge to suppress unchecked warning
+        });
       }
     });
     return false;

@@ -160,7 +160,14 @@ function setupEventListeners(): void {
     if (id === currentHighlightId) return;
     currentHighlightId = id;
 
-    chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message);
+    if (id) {
+      highlightElement(id);
+    } else if (currentHighlightedEl) {
+      currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
+      currentHighlightedEl = null;
+    }
+
+    chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message).catch(() => {});
   });
 
   document.addEventListener('mouseout', (e) => {
@@ -172,7 +179,11 @@ function setupEventListeners(): void {
     const stillInside = relatedTarget ? el.contains(relatedTarget) : false;
     if (!stillInside) {
       currentHighlightId = null;
-      chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message);
+      if (currentHighlightedEl) {
+        currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
+        currentHighlightedEl = null;
+      }
+      chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message).catch(() => {});
     }
   });
 
@@ -184,7 +195,7 @@ function setupEventListeners(): void {
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
 
-    chrome.runtime.sendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
+    chrome.runtime.sendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message).catch(() => {});
   });
 }
 
@@ -222,6 +233,12 @@ const OBSERVER_OPTIONS: MutationObserverInit = {
 };
 
 function setupMutationObserver(): void {
+  // Disconnect any previous observer before creating a new one
+  if (observer) {
+    observer.disconnect();
+    observerActive = false;
+  }
+
   const pendingAdded = new Set<Element>();
   const pendingUpdated = new Map<string, string>();
 
@@ -237,13 +254,13 @@ function setupMutationObserver(): void {
       pendingAdded.clear();
 
       if (newBlocks.length > 0) {
-        chrome.runtime.sendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message);
+        chrome.runtime.sendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message).catch(() => {});
       }
     }
 
     if (pendingUpdated.size > 0) {
       for (const [id, text] of pendingUpdated) {
-        chrome.runtime.sendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message);
+        chrome.runtime.sendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message).catch(() => {});
       }
       pendingUpdated.clear();
     }

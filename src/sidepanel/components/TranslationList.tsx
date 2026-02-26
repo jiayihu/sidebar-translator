@@ -20,7 +20,9 @@ export function TranslationList({
   if (blocks.length === 0) {
     return (
       <div className={styles.empty}>
-        <p>No text blocks found on this page.</p>
+        <span className={styles.emptyGlyph}>◇</span>
+        <p className={styles.emptyText}>No text detected</p>
+        <p className={styles.emptySubtext}>Navigate to a page with content</p>
       </div>
     );
   }
