@@ -36,47 +36,50 @@ interface LanguagePickerProps {
 export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTargetChange, onTranslate, isLoading }: LanguagePickerProps) {
   return (
     <div className={styles.container}>
-      <div className={styles.selectWrapper}>
-        <span className={styles.label}>From</span>
-        <select
-          className={styles.select}
-          value={sourceLang}
-          onChange={(e) => onSourceChange(e.target.value)}
-          aria-label="Source language"
-        >
-          {LANGUAGES.map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <div className={styles.selects}>
+        <div className={styles.selectWrapper}>
+          <span className={styles.label}>From</span>
+          <select
+            className={styles.select}
+            value={sourceLang}
+            onChange={(e) => onSourceChange(e.target.value)}
+            aria-label="Source language"
+          >
+            {LANGUAGES.map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <span className={styles.arrow}>→</span>
+        <span className={styles.arrow}>→</span>
 
-      <div className={styles.selectWrapper}>
-        <span className={styles.label}>To</span>
-        <select
-          className={styles.select}
-          value={targetLang}
-          onChange={(e) => onTargetChange(e.target.value)}
-          aria-label="Target language"
-        >
-          {LANGUAGES.filter((l) => l.code !== 'auto').map((lang) => (
-            <option key={lang.code} value={lang.code}>
-              {lang.label}
-            </option>
-          ))}
-        </select>
+        <div className={styles.selectWrapper}>
+          <span className={styles.label}>To</span>
+          <select
+            className={styles.select}
+            value={targetLang}
+            onChange={(e) => onTargetChange(e.target.value)}
+            aria-label="Target language"
+          >
+            {LANGUAGES.filter((l) => l.code !== 'auto').map((lang) => (
+              <option key={lang.code} value={lang.code}>
+                {lang.label}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <button
-        className={styles.translateBtn}
+        className={`${styles.translateBtn} ${isLoading ? styles.translateBtnLoading : ''}`}
         onClick={onTranslate}
         disabled={isLoading}
         title="Translate page"
       >
-        ▶
+        <span className={styles.translateBtnIcon}>{isLoading ? '↻' : '▶'}</span>
+        <span>{isLoading ? 'Translating…' : 'Translate page'}</span>
       </button>
     </div>
   );

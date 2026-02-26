@@ -182,6 +182,36 @@
   border-color: #fecaca;
 }
 
+/* ── Idle placeholder ───────────────────────────────────────────────── */
+
+.idlePlaceholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.idleIcon {
+  font-size: 32px;
+  color: var(--ink-faint);
+  line-height: 1;
+}
+
+.idleText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.6;
+}
+
+.idleText strong {
+  color: var(--ink-mid);
+}
+
 /* ── Skeleton loading ───────────────────────────────────────────────── */
 
 .skeletonList {

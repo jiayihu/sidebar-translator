@@ -105,19 +105,16 @@ export default function App() {
     [],
   );
 
-  // ─── Initialize: load settings, then extract ────────────────────────────
+  // ─── Initialize: load settings only (translation is user-triggered) ────
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
     getSettings().then((s) => {
-      const src = s.sourceLanguage;
-      const tgt = s.targetLanguage;
-      setSourceLang(src);
-      setTargetLang(tgt);
-      extractAndTranslate(src, tgt);
+      setSourceLang(s.sourceLanguage);
+      setTargetLang(s.targetLanguage);
     });
-  }, [extractAndTranslate]);
+  }, []);
 
   // ─── Connect to background via long-lived port ───────────────────────────
   useEffect(() => {
@@ -227,7 +224,7 @@ export default function App() {
     extractAndTranslate(sourceLangRef.current, targetLangRef.current);
   }, [extractAndTranslate]);
 
-  const isLoading = status === 'idle' || status === 'extracting' || status === 'translating';
+  const isLoading = status === 'extracting' || status === 'translating';
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
@@ -268,6 +265,13 @@ export default function App() {
 
       {status === 'error' && (
         <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
+      )}
+
+      {status === 'idle' && (
+        <div className={styles.idlePlaceholder}>
+          <div className={styles.idleIcon}>⇄</div>
+          <p className={styles.idleText}>Choose languages and press <strong>Translate page</strong> to begin.</p>
+        </div>
       )}
 
       {isLoading && blocks.length === 0 ? (
