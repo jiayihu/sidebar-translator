@@ -10,6 +10,12 @@ import styles from './App.module.css';
 
 type Status = 'idle' | 'extracting' | 'translating' | 'ready' | 'same-lang' | 'error';
 
+function scrollIntoViewIfNeeded(el: HTMLDivElement) {
+  const rect = el.getBoundingClientRect();
+  const inView = rect.top >= 0 && rect.bottom <= window.innerHeight;
+  el.scrollIntoView({ behavior: 'smooth', block: inView ? 'nearest' : 'center' });
+}
+
 function langMatches(a: string, b: string): boolean {
   return a.toLowerCase().split('-')[0] === b.toLowerCase().split('-')[0];
 }
@@ -150,7 +156,7 @@ export default function App() {
           const el = itemRefs.current.get(message.id);
           if (el) {
             setActiveId(message.id);
-            el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            scrollIntoViewIfNeeded(el);
           }
         }
       }

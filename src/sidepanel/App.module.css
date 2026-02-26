@@ -39,7 +39,6 @@
 
 .title {
   margin: 0;
-  font-family: var(--font-display);
   font-size: 22px;
   font-weight: 600;
   color: var(--ink);
@@ -62,7 +61,10 @@
   color: var(--ink-mid);
   font-size: 15px;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    color 0.15s;
   flex-shrink: 0;
 }
 
@@ -99,7 +101,9 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Translation Beam ───────────────────────────────────────────────── */
@@ -155,10 +159,20 @@
 }
 
 @keyframes beamSlide {
-  0%   { transform: translateX(-110%); opacity: 0; }
-  15%  { opacity: 1; }
-  85%  { opacity: 1; }
-  100% { transform: translateX(110%); opacity: 0; }
+  0% {
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(110%);
+    opacity: 0;
+  }
 }
 
 /* ── Status bar ─────────────────────────────────────────────────────── */
@@ -230,13 +244,22 @@
 }
 
 @keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center; }
+  0% {
+    background-position: -200% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
 }
 
 @keyframes skeletonFade {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.45; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .skeletonItem {
