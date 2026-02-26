@@ -3,57 +3,78 @@
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
+  background: var(--bg);
 }
+
+/* ── Header ──────────────────────────────────────────────────────── */
 
 .header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px 8px;
-  border-bottom: 1px solid #e5e7eb;
-  background: #ffffff;
+  padding: 16px 16px 12px;
+  background: var(--bg);
+  flex-shrink: 0;
 }
 
 .title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: #111827;
-  letter-spacing: -0.01em;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ink);
+  letter-spacing: -0.02em;
 }
 
 .refreshBtn {
-  background: none;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  padding: 2px 8px;
-  font-size: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-pill);
+  border: none;
+  background: var(--ink);
+  color: #ffffff;
+  font-size: 15px;
   cursor: pointer;
-  color: #6b7280;
-  line-height: 1.4;
-  transition: background 0.15s;
+  transition: opacity 0.15s, transform 0.2s;
+  flex-shrink: 0;
 }
 
 .refreshBtn:hover:not(:disabled) {
-  background: #f3f4f6;
-  color: #374151;
+  opacity: 0.82;
+}
+
+.refreshBtn:active:not(:disabled) {
+  transform: rotate(180deg);
+}
+
+.refreshBtn:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
 }
 
 .refreshBtn:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
 }
 
+/* ── Status bar ──────────────────────────────────────────────────── */
+
 .statusBar {
-  padding: 6px 12px;
-  font-size: 12px;
-  color: #6b7280;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  margin: 0 16px 10px;
+  padding: 6px 14px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ink-muted);
+  background: var(--surface);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+  text-align: center;
 }
 
-.statusBar.error {
-  color: #dc2626;
-  background: #fef2f2;
-  border-bottom-color: #fecaca;
+.error {
+  color: #c0392b;
+  background: #fdf0ef;
 }

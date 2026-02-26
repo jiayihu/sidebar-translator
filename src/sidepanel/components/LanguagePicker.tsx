@@ -34,31 +34,39 @@ interface LanguagePickerProps {
 export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTargetChange }: LanguagePickerProps) {
   return (
     <div className={styles.container}>
-      <select
-        className={styles.select}
-        value={sourceLang}
-        onChange={(e) => onSourceChange(e.target.value)}
-        aria-label="Source language"
-      >
-        {LANGUAGES.map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.label}
-          </option>
-        ))}
-      </select>
+      <div className={styles.selectWrapper}>
+        <span className={styles.label}>From</span>
+        <select
+          className={styles.select}
+          value={sourceLang}
+          onChange={(e) => onSourceChange(e.target.value)}
+          aria-label="Source language"
+        >
+          {LANGUAGES.map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <span className={styles.arrow}>→</span>
-      <select
-        className={styles.select}
-        value={targetLang}
-        onChange={(e) => onTargetChange(e.target.value)}
-        aria-label="Target language"
-      >
-        {LANGUAGES.filter((l) => l.code !== 'auto').map((lang) => (
-          <option key={lang.code} value={lang.code}>
-            {lang.label}
-          </option>
-        ))}
-      </select>
+
+      <div className={styles.selectWrapper}>
+        <span className={styles.label}>To</span>
+        <select
+          className={styles.select}
+          value={targetLang}
+          onChange={(e) => onTargetChange(e.target.value)}
+          aria-label="Target language"
+        >
+          {LANGUAGES.filter((l) => l.code !== 'auto').map((lang) => (
+            <option key={lang.code} value={lang.code}>
+              {lang.label}
+            </option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }
