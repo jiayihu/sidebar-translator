@@ -5,7 +5,8 @@ const SIDEPANEL_PATH = 'src/sidepanel/index.html';
 // Tracks tabs that currently have the panel open so the action button toggles correctly
 const openedTabs = new Set<number>();
 
-let sidePanelPort: chrome.runtime.Port | null = null;
+// Map from tab ID → the sidepanel port monitoring that tab (supports multiple windows)
+const tabPorts = new Map<number, chrome.runtime.Port>();
 
 // We handle the action click ourselves to get per-tab, toggle behaviour
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
@@ -30,16 +31,19 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
-  sidePanelPort = port;
 
   // Capture the active tab at connect time. When the port later disconnects
   // (user pressed X to close the panel), remove the tab from openedTabs so
   // the next action click re-opens rather than double-toggling to close.
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     const tabId = tabs[0]?.id;
+    if (tabId == null) return;
+
+    tabPorts.set(tabId, port);
+
     port.onDisconnect.addListener(() => {
-      sidePanelPort = null;
-      if (tabId != null) openedTabs.delete(tabId);
+      tabPorts.delete(tabId);
+      openedTabs.delete(tabId);
     });
   });
 });
@@ -47,11 +51,12 @@ chrome.runtime.onConnect.addListener((port) => {
 // Clean up when a tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   openedTabs.delete(tabId);
+  tabPorts.delete(tabId);
 });
 
 // Relay messages between content script and side panel
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
-  const tabId = sender.tab?.id;
+  const senderTabId = sender.tab?.id;
 
   if (message.type === 'EXTRACT_TEXT') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -77,8 +82,10 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'NEW_TEXT_BLOCKS' ||
     message.type === 'TEXT_UPDATED'
   ) {
-    if (sidePanelPort) {
-      sidePanelPort.postMessage(message);
+    // Only forward to the sidepanel port associated with this specific tab
+    if (senderTabId != null) {
+      const port = tabPorts.get(senderTabId);
+      if (port) port.postMessage(message);
     }
     return false;
   }
@@ -95,10 +102,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (tabId != null && message.type === 'PAGE_TEXT') {
-    if (sidePanelPort) {
-      sidePanelPort.postMessage(message);
-    }
+  if (senderTabId != null && message.type === 'PAGE_TEXT') {
+    const port = tabPorts.get(senderTabId);
+    if (port) port.postMessage(message);
   }
 
   return false;

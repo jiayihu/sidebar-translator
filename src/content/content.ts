@@ -25,6 +25,7 @@ let idCounter = 0;
 let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
+let activated = false; // true after first EXTRACT_TEXT
 
 // ─── Style injection ──────────────────────────────────────────────────────────
 
@@ -51,9 +52,18 @@ function injectStyles(): void {
 
 function isHidden(el: Element): boolean {
   if (!(el instanceof HTMLElement)) return false;
-  if (el.offsetParent === null && el.tagName !== 'BODY') return true;
   const style = window.getComputedStyle(el);
-  return style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0';
+  if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+    return true;
+  }
+  // offsetParent is null for position:fixed/sticky elements and for elements
+  // inside display:none ancestors. Only treat it as hidden when the element
+  // is not fixed/sticky positioned (and not the <body>).
+  if (el.offsetParent === null && el.tagName !== 'BODY') {
+    const pos = style.position;
+    if (pos !== 'fixed' && pos !== 'sticky') return true;
+  }
+  return false;
 }
 
 function shouldSkip(node: Node): boolean {
@@ -233,10 +243,14 @@ const OBSERVER_OPTIONS: MutationObserverInit = {
 };
 
 function setupMutationObserver(): void {
-  // Disconnect any previous observer before creating a new one
+  // Disconnect any previous observer and clear pending debounce timer
   if (observer) {
     observer.disconnect();
     observerActive = false;
+  }
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
   }
 
   const pendingAdded = new Set<Element>();
@@ -322,7 +336,13 @@ function setupMutationObserver(): void {
 
 chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) => {
   if (message.type === 'EXTRACT_TEXT') {
-    injectStyles();
+    // First activation: inject styles and event listeners
+    if (!activated) {
+      activated = true;
+      injectStyles();
+      setupEventListeners();
+    }
+
     const blocks = extractTextBlocks();
     setupMutationObserver();
     sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
@@ -341,7 +361,3 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
 
   return false;
 });
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-
-setupEventListeners();

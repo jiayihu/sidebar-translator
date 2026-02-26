@@ -2,11 +2,18 @@ import type { ITranslator } from './types';
 
 const CHUNK_SIZE = 50;
 
+function getEndpoint(apiKey: string): string {
+  return apiKey.endsWith(':fx')
+    ? 'https://api-free.deepl.com/v2/translate'
+    : 'https://api.deepl.com/v2/translate';
+}
+
 export class DeepLTranslator implements ITranslator {
   constructor(private apiKey: string) {}
 
   async translate(texts: string[], sourceLang: string, targetLang: string): Promise<string[]> {
     const results: string[] = [];
+    const endpoint = getEndpoint(this.apiKey);
 
     for (let i = 0; i < texts.length; i += CHUNK_SIZE) {
       const chunk = texts.slice(i, i + CHUNK_SIZE);
@@ -18,7 +25,7 @@ export class DeepLTranslator implements ITranslator {
         body.source_lang = sourceLang.toUpperCase();
       }
 
-      const response = await fetch('https://api-free.deepl.com/v2/translate', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           Authorization: `DeepL-Auth-Key ${this.apiKey}`,
