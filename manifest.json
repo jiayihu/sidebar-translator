@@ -1,8 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Sidebar Translator",
-  "version": "0.1.0",
-  "description": "Translate page content in a sidebar without modifying the live DOM",
+  "version": "1.0.0",
+  "description": "Translate pages in a sidebar with no DOM changes. Uses Chrome's built-in AI, or optional DeepL / Google Translate API keys.",
+  "icons": {
+    "16": "public/icons/icon16.png",
+    "32": "public/icons/icon32.png",
+    "48": "public/icons/icon48.png",
+    "128": "public/icons/icon128.png"
+  },
   "permissions": ["sidePanel", "activeTab", "storage"],
   "host_permissions": [
     "https://api-free.deepl.com/*",
@@ -25,6 +31,12 @@
   },
   "options_page": "src/options/index.html",
   "action": {
-    "default_title": "Open Sidebar Translator"
+    "default_title": "Open Sidebar Translator",
+    "default_icon": {
+      "16": "public/icons/icon16.png",
+      "32": "public/icons/icon32.png",
+      "48": "public/icons/icon48.png",
+      "128": "public/icons/icon128.png"
+    }
   }
 }
