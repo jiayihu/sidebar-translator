@@ -6,6 +6,10 @@ declare global {
   interface Translator {
     translate(text: string): Promise<string>;
     destroy(): void;
+    /** Available input quota in characters. May be undefined in older Chrome versions. */
+    inputQuota?: number;
+    /** Measures how much quota the given input would consume. May be undefined in older Chrome versions. */
+    measureInputUsage?(input: string): Promise<number>;
   }
 
   interface TranslatorCreateOptions {
@@ -135,6 +139,19 @@ export class ChromeAITranslator implements ITranslator {
 
     const results: string[] = [];
     for (const text of texts) {
+      // Check quota before translating if the API is available
+      if (
+        typeof translator.inputQuota === 'number' &&
+        typeof translator.measureInputUsage === 'function'
+      ) {
+        const usage = await translator.measureInputUsage(text);
+        if (usage > translator.inputQuota) {
+          throw new Error(
+            `Chrome AI Translator: input quota exceeded. The text requires ${usage} units but only ${translator.inputQuota} remain. Please try again later or translate a shorter selection.`,
+          );
+        }
+      }
+
       const translated = await translator.translate(text);
       results.push(translated);
     }

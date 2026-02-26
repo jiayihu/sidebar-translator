@@ -21,17 +21,13 @@ src/
       TranslationList.tsx / .module.css
       LanguagePicker.tsx / .module.css
     App.module.css, sidepanel.css
-  options/                     # Options page React app
-    index.html, main.tsx, App.tsx
   lib/
     messages.ts                # Shared Message union type + TextBlock interface
     storage.ts                 # chrome.storage.sync wrappers (getSettings / saveSettings)
     translation/
       types.ts                 # ITranslator interface
-      chrome-ai.ts             # Chrome built-in Translator API (default)
-      deepl.ts                 # DeepL REST API adapter (chunks of 50)
-      google.ts                # Google Cloud Translation v2 adapter (chunks of 128)
-      index.ts                 # Factory: Chrome AI → DeepL → Google → error
+      chrome-ai.ts             # Chrome built-in Translator API (with quota checks)
+      index.ts                 # Factory: Chrome AI or error
 ```
 
 ## Build & Development
@@ -55,11 +51,8 @@ Load `dist/` as an unpacked extension in `chrome://extensions`.
 - Side panel connects with a **long-lived port** named `"sidepanel"` for receiving push messages
 - One-off messages use `chrome.runtime.sendMessage` / `chrome.tabs.sendMessage`
 
-### Translation Priority
-1. Chrome AI Translator API (`'Translator' in self`)
-2. DeepL API key in `chrome.storage.sync`
-3. Google Cloud Translation API key in `chrome.storage.sync`
-4. Error thrown to user
+### Translation
+Uses Chrome's built-in Translator API exclusively. The `ChromeAITranslator` class checks `inputQuota` / `measureInputUsage()` before each translation to provide clear quota-exceeded errors.
 
 ### Dynamic Content
 Content script attaches a `MutationObserver` after initial extraction with 400ms debounce. Sends `NEW_TEXT_BLOCKS` for new elements and `TEXT_UPDATED` for changed text in already-tagged elements. Observer temporarily disconnects when assigning `data-st-id` attributes to avoid feedback loops.
@@ -67,8 +60,6 @@ Content script attaches a `MutationObserver` after initial extraction with 400ms
 ## Settings (chrome.storage.sync)
 - `targetLanguage` – BCP 47 code (default `"en"`)
 - `sourceLanguage` – BCP 47 code or `"auto"` (default `"auto"`)
-- `deepLApiKey` – optional DeepL free-tier key
-- `googleApiKey` – optional Google Cloud Translation key
 
 ## CSS Classes Injected by Content Script
 - `.st-highlight` – soft purple outline (hover from sidebar)

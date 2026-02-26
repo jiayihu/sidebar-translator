@@ -1,15 +1,11 @@
 export interface Settings {
   targetLanguage: string;
   sourceLanguage: string;
-  deepLApiKey: string;
-  googleApiKey: string;
 }
 
 const DEFAULTS: Settings = {
   targetLanguage: 'en',
   sourceLanguage: 'auto',
-  deepLApiKey: '',
-  googleApiKey: '',
 };
 
 export async function getSettings(): Promise<Settings> {
