@@ -46,7 +46,7 @@ export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTarge
           </option>
         ))}
       </select>
-      <span className={styles.arrow}>⟶</span>
+      <span className={styles.arrow}>→</span>
       <select
         className={styles.select}
         value={targetLang}

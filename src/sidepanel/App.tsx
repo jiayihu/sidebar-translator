@@ -228,9 +228,8 @@ export default function App() {
           onClick={handleRefresh}
           disabled={status === 'extracting' || status === 'translating'}
           title="Re-scan and translate page"
-          aria-label="Re-scan and translate page"
         >
-          ↻
+          ↺
         </button>
       </header>
 
@@ -242,10 +241,10 @@ export default function App() {
       />
 
       {status === 'extracting' && (
-        <div className={styles.statusBar}>reading the page…</div>
+        <div className={styles.statusBar}>Extracting text…</div>
       )}
       {status === 'translating' && (
-        <div className={styles.statusBar}>translating…</div>
+        <div className={styles.statusBar}>Translating {blocks.length} blocks…</div>
       )}
       {status === 'error' && (
         <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
