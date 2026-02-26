@@ -5,7 +5,7 @@ export interface TextBlock {
 
 export type Message =
   | { type: 'EXTRACT_TEXT' }
-  | { type: 'PAGE_TEXT'; blocks: TextBlock[] }
+  | { type: 'PAGE_TEXT'; blocks: TextBlock[]; pageLang?: string }
   | { type: 'NEW_TEXT_BLOCKS'; blocks: TextBlock[] }
   | { type: 'TEXT_UPDATED'; id: string; text: string }
   | { type: 'ELEMENT_HOVERED'; id: string | null }

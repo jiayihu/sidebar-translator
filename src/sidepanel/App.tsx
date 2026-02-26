@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSettings, saveSettings } from '../lib/storage';
 import { getTranslator } from '../lib/translation';
+import { detectPageLanguage } from '../lib/translation/chrome-ai';
 import type { Message, TextBlock } from '../lib/messages';
 import { LanguagePicker } from './components/LanguagePicker';
 import { TranslationList } from './components/TranslationList';
 import type { TranslationBlock } from './components/TranslationItem';
 import styles from './App.module.css';
 
-type Status = 'idle' | 'extracting' | 'translating' | 'ready' | 'error';
+type Status = 'idle' | 'extracting' | 'translating' | 'ready' | 'same-lang' | 'error';
+
+function langMatches(a: string, b: string): boolean {
+  return a.toLowerCase().split('-')[0] === b.toLowerCase().split('-')[0];
+}
 
 async function translateRaw(
   rawBlocks: TextBlock[],
@@ -43,6 +48,8 @@ export default function App() {
   const portRef = useRef<chrome.runtime.Port | null>(null);
   // Store raw blocks so language changes can re-translate without re-extracting
   const rawBlocksRef = useRef<TextBlock[]>([]);
+  // <html lang> from the last extraction, used as fallback for language detection
+  const pageLangRef = useRef<string | undefined>(undefined);
   // Track whether initial extraction has run
   const initializedRef = useRef(false);
 
@@ -55,6 +62,12 @@ export default function App() {
     setBlocks([]);
     setErrorMsg('');
     try {
+      const detected = await detectPageLanguage(raw, pageLangRef.current);
+      if (detected && langMatches(detected, tgt)) {
+        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+        setStatus('same-lang');
+        return;
+      }
       const translated = await translateRaw(raw, src, tgt);
       setBlocks(translated);
       setStatus('ready');
@@ -86,9 +99,17 @@ export default function App() {
 
         const rawBlocks: TextBlock[] = response.blocks;
         rawBlocksRef.current = rawBlocks;
+        pageLangRef.current = response.pageLang;
 
         if (rawBlocks.length === 0) {
           setStatus('ready');
+          return;
+        }
+
+        const detected = await detectPageLanguage(rawBlocks, response.pageLang);
+        if (detected && langMatches(detected, tgt)) {
+          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+          setStatus('same-lang');
           return;
         }
 
@@ -260,6 +281,12 @@ export default function App() {
             <div className={styles.beamFill} />
           </div>
           <span className={styles.beamChip}>{targetLang}</span>
+        </div>
+      )}
+
+      {status === 'same-lang' && (
+        <div className={`${styles.statusBar} ${styles.info}`}>
+          This page is already in the target language — showing original text.
         </div>
       )}
 

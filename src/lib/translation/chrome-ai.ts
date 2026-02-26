@@ -1,3 +1,4 @@
+import type { TextBlock } from '../messages';
 import type { ITranslator } from './types';
 
 // Augment the global scope with Chrome AI Translator + Language Detector API types
@@ -41,6 +42,35 @@ declare global {
 
 export function isLanguageDetectorAvailable(): boolean {
   return typeof LanguageDetector !== 'undefined';
+}
+
+/**
+ * Best-effort page language detection.
+ * Tries Chrome AI LanguageDetector on a text sample, falls back to the
+ * <html lang> attribute supplied by the content script.
+ * Returns null if neither source is available.
+ */
+export async function detectPageLanguage(
+  blocks: TextBlock[],
+  pageLang: string | undefined,
+): Promise<string | null> {
+  if (typeof LanguageDetector !== 'undefined') {
+    try {
+      const avail = await LanguageDetector.availability();
+      if (avail !== 'unavailable') {
+        const detector = await LanguageDetector.create();
+        const sample = blocks.slice(0, 8).map((b) => b.text).join(' ').slice(0, 600);
+        const results = await detector.detect(sample);
+        detector.destroy();
+        if ((results[0]?.confidence ?? 0) > 0.5) {
+          return results[0]!.detectedLanguage;
+        }
+      }
+    } catch {
+      // fall through to pageLang
+    }
+  }
+  return pageLang ?? null;
 }
 
 export class ChromeAITranslator implements ITranslator {

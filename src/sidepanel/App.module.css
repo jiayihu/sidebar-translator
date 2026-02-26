@@ -176,6 +176,12 @@
   text-align: center;
 }
 
+.info {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
 .error {
   color: #b91c1c;
   background: #fef2f2;

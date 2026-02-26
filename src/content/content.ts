@@ -325,7 +325,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     injectStyles();
     const blocks = extractTextBlocks();
     setupMutationObserver();
-    sendResponse({ type: 'PAGE_TEXT', blocks });
+    sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
     return false;
   }
 
