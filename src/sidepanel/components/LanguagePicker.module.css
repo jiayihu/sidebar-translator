@@ -2,30 +2,45 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 12px;
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+  flex-shrink: 0;
 }
 
 .select {
   flex: 1;
-  padding: 4px 6px;
-  border: 1px solid #d1d5db;
-  border-radius: 4px;
-  font-size: 12px;
-  background: #ffffff;
-  color: #374151;
-  cursor: pointer;
   min-width: 0;
+  height: 30px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--foreground);
+  background-color: var(--background);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color 0.15s;
+}
+
+.select:hover {
+  border-color: var(--ring);
 }
 
 .select:focus {
-  outline: 2px solid #4f46e5;
-  outline-offset: 1px;
+  outline: none;
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
 }
 
 .arrow {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted-foreground);
   flex-shrink: 0;
+  user-select: none;
 }
