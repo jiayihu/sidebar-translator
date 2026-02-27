@@ -79,16 +79,6 @@
   color: var(--accent);
 }
 
-/* Original — smaller, muted */
-.original {
-  margin: 0;
-  font-size: calc(var(--translation-font-size, 14px) - 2px);
-  font-weight: 400;
-  line-height: 1.65;
-  letter-spacing: 0.005em;
-  color: var(--ink);
-}
-
 /* Flash animation for selected items */
 @keyframes flash {
   0%, 100% {

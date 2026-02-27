@@ -57,7 +57,12 @@ export default function App() {
   const [blockInteractive, setBlockInteractive] = useState(false);
   const [translationMode, setTranslationMode] = useState(true);
   const [fontSize, setFontSize] = useState(14);
-  const [openSections, setOpenSections] = useState<Set<PageSection>>(new Set());
+  // Initialize with default open sections (main and article)
+  const [openSections, setOpenSections] = useState<Set<PageSection>>(() => {
+    return new Set(['main', 'article'] as PageSection[]);
+  });
+  // Track elements that need scrolling after their section opens
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
 
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const portRef = useRef<chrome.runtime.Port | null>(null);
@@ -77,12 +82,35 @@ export default function App() {
   useEffect(() => { blockToSectionRef.current = blockToSection; }, [blockToSection]);
   useEffect(() => { openSectionsRef.current = openSections; }, [openSections]);
 
+  // ─── Scroll to pending element after section opens ───────────────────────────
+  // This effect runs after React completes the render, ensuring the element is visible
+  useEffect(() => {
+    if (pendingScrollId) {
+      const el = itemRefs.current.get(pendingScrollId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setFlashingId(pendingScrollId);
+        setTimeout(() => setFlashingId(null), 300);
+        setPendingScrollId(null);
+      }
+      // If element still not found after section opens, clear pending after timeout
+      // This prevents stale pending scrolls from blocking future ones
+      const timeout = setTimeout(() => setPendingScrollId(null), 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [openSections, pendingScrollId]);
+
   // Store raw blocks so language changes can re-translate without re-extracting
   const rawBlocksRef = useRef<TextBlock[]>([]);
   // <html lang> from the last extraction, used as fallback for language detection
   const pageLangRef = useRef<string | undefined>(undefined);
   // Track whether initial extraction has run
   const initializedRef = useRef(false);
+  // Refs so the port message handler always sees current language values
+  const sourceLangRef = useRef(sourceLang);
+  const targetLangRef = useRef(targetLang);
+  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
+  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
 
   // ─── Download progress callback for model downloads ─────────────────────
   const handleDownloadProgress = useCallback((progress: number) => {
@@ -187,6 +215,7 @@ export default function App() {
       setTargetLang(s.targetLanguage);
       setBlockInteractive(s.blockInteractive);
       setFontSize(s.fontSize);
+      setTranslationMode(s.translationMode);
     });
   }, []);
 
@@ -209,16 +238,8 @@ export default function App() {
             const section = blockToSectionRef.current.get(message.id);
             if (section && !openSectionsRef.current.has(section)) {
               setOpenSections((prev) => new Set(prev).add(section));
-              // Wait for React to render the opened accordion, then scroll
-              requestAnimationFrame(() => {
-                requestAnimationFrame(() => {
-                  const elAfterOpen = itemRefs.current.get(message.id);
-                  if (elAfterOpen) {
-                    setActiveId(message.id);
-                    scrollIntoViewIfNeeded(elAfterOpen);
-                  }
-                });
-              });
+              setActiveId(message.id);
+              setPendingScrollId(message.id);
             }
           }
         }
@@ -237,17 +258,7 @@ export default function App() {
           const section = blockToSectionRef.current.get(message.id);
           if (section && !openSectionsRef.current.has(section)) {
             setOpenSections((prev) => new Set(prev).add(section));
-            // Wait for React to render the opened accordion, then scroll
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                const elAfterOpen = itemRefs.current.get(message.id);
-                if (elAfterOpen) {
-                  elAfterOpen.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  setFlashingId(message.id);
-                  setTimeout(() => setFlashingId(null), 300);
-                }
-              });
-            });
+            setPendingScrollId(message.id);
           }
         }
       }
@@ -323,12 +334,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refs so the port message handler always sees current language values
-  const sourceLangRef = useRef(sourceLang);
-  const targetLangRef = useRef(targetLang);
-  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
-  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
-
   // ─── Language change → re-translate stored blocks ───────────────────────
   const isFirstLangRender = useRef(true);
   useEffect(() => {
@@ -374,6 +379,7 @@ export default function App() {
   // ─── Translation mode toggle ───────────────────────────────────────────────
   const handleTranslationModeChange = useCallback((enabled: boolean) => {
     setTranslationMode(enabled);
+    saveSettings({ translationMode: enabled });
     chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
   }, []);
 
@@ -383,6 +389,19 @@ export default function App() {
       const newSize = Math.max(10, Math.min(24, prev + delta));
       saveSettings({ fontSize: newSize });
       return newSize;
+    });
+  }, []);
+
+  // ─── Accordion section toggle ───────────────────────────────────────────────────
+  const handleSectionToggle = useCallback((section: PageSection, isOpen: boolean) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (isOpen) {
+        next.add(section);
+      } else {
+        next.delete(section);
+      }
+      return next;
     });
   }, []);
 
@@ -402,16 +421,16 @@ export default function App() {
             <button
               className={`${styles.modeBtn} ${!translationMode ? styles.modeBtnActive : ''}`}
               onClick={() => handleTranslationModeChange(false)}
-              title="Modalità lettura"
+              title="Read mode"
             >
-              Lettura
+              Read
             </button>
             <button
               className={`${styles.modeBtn} ${translationMode ? styles.modeBtnActive : ''}`}
               onClick={() => handleTranslationModeChange(true)}
-              title="Modalità traduzione"
+              title="Translate mode"
             >
-              Traduzione
+              Translate
             </button>
           </div>
           <button
@@ -537,6 +556,7 @@ export default function App() {
               flashingId={flashingId}
               itemRefs={itemRefs}
               openSections={openSections}
+              onSectionToggle={handleSectionToggle}
               onItemMouseEnter={handleItemMouseEnter}
               onItemMouseLeave={handleItemMouseLeave}
               onItemClick={handleItemClick}

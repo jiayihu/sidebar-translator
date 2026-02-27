@@ -1,4 +1,5 @@
 import type { Message, PageSection, TextBlock } from '../lib/messages';
+import { getSettings, saveSettings } from '../lib/storage';
 
 // ─── Helper: Safe message sending ─────────────────────────────────────────────
 
@@ -109,6 +110,9 @@ function setTranslationMode(enabled: boolean): void {
   translationMode = enabled;
   updateModeUI();
 
+  // Persist the setting
+  saveSettings({ translationMode: enabled });
+
   // Clear any existing highlights when switching to read mode
   if (!enabled && currentHighlightedEl) {
     currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
@@ -134,6 +138,14 @@ function setBlockInteractive(enabled: boolean): void {
 }
 
 // ─── DOM Utilities ────────────────────────────────────────────────────────────
+
+/**
+ * Creates a safe selector for finding elements by their st-id attribute.
+ * Uses CSS.escape to handle IDs that might contain special characters.
+ */
+function getElementByStId(id: string): HTMLElement | null {
+  return document.querySelector(`[${ST_ATTR}="${CSS.escape(id)}"]`) as HTMLElement | null;
+}
 
 function isHidden(el: Element): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -388,7 +400,7 @@ function highlightElement(id: string): void {
     currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
     currentHighlightedEl = null;
   }
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) {
     el.classList.add(HIGHLIGHT_CLASS);
     currentHighlightedEl = el;
@@ -396,7 +408,7 @@ function highlightElement(id: string): void {
 }
 
 function unhighlightElement(id: string): void {
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) el.classList.remove(HIGHLIGHT_CLASS);
   if (currentHighlightedEl?.getAttribute(ST_ATTR) === id) {
     currentHighlightedEl = null;
@@ -404,7 +416,7 @@ function unhighlightElement(id: string): void {
 }
 
 function scrollToElement(id: string): void {
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (!el) return;
 
   // Scroll into view
@@ -529,6 +541,13 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       activated = true;
       injectStyles();
       setupEventListeners();
+
+      // Load persisted settings for translation mode
+      getSettings().then((settings) => {
+        translationMode = settings.translationMode;
+        updateModeUI();
+      });
+
       updateModeUI(); // Apply initial translation mode state to body class
     }
 

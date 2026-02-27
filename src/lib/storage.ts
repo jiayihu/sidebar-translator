@@ -3,6 +3,7 @@ export interface Settings {
   sourceLanguage: string;
   blockInteractive: boolean;
   fontSize: number;
+  translationMode: boolean;
 }
 
 const DEFAULTS: Settings = {
@@ -10,6 +11,7 @@ const DEFAULTS: Settings = {
   sourceLanguage: 'auto',
   blockInteractive: false,
   fontSize: 14,
+  translationMode: true,
 };
 
 export async function getSettings(): Promise<Settings> {

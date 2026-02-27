@@ -23,7 +23,8 @@ interface TranslationListProps {
   activeId: string | null;
   flashingId: string | null;
   itemRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  openSections?: Set<PageSection>; // Sections that should be forced open
+  openSections: Set<PageSection>;
+  onSectionToggle: (section: PageSection, isOpen: boolean) => void;
   onItemMouseEnter: (id: string) => void;
   onItemMouseLeave: (id: string) => void;
   onItemClick: (id: string) => void;
@@ -35,6 +36,7 @@ export function TranslationList({
   flashingId,
   itemRefs,
   openSections,
+  onSectionToggle,
   onItemMouseEnter,
   onItemMouseLeave,
   onItemClick,
@@ -100,16 +102,13 @@ export function TranslationList({
         const sectionBlocks = groupedBlocks.get(section);
         if (!sectionBlocks || sectionBlocks.length === 0) return null;
 
-        const isDefaultOpen = section === 'main' || section === 'article';
-        const isForcedOpen = openSections?.has(section) ?? false;
-
         return (
           <Accordion
             key={section}
             title={SECTION_LABELS[section]}
             count={sectionBlocks.length}
-            defaultOpen={isDefaultOpen}
-            open={isForcedOpen || undefined}
+            open={openSections.has(section)}
+            onToggle={(isOpen) => onSectionToggle(section, isOpen)}
           >
             {sectionBlocks.map((block) => (
               <TranslationItem

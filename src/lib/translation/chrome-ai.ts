@@ -231,6 +231,8 @@ export class ChromeAITranslator implements ITranslator {
 
       // If the model needs to be downloaded and we don't have a user gesture,
       // throw a special error that the UI can handle
+      // Note: 'downloading' is not in the official TypeScript types but Chrome may
+      // return it in some cases, so we handle it defensively alongside 'downloadable'
       if ((availability === 'downloadable' || availability === 'downloading') && !hasUserGesture) {
         throw new TranslatorDownloadRequiredError(actualSourceLang, normalizedTargetLang);
       }
