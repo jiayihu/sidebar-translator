@@ -55,6 +55,7 @@ export default function App() {
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
   const [blockInteractive, setBlockInteractive] = useState(false);
+  const [translationMode, setTranslationMode] = useState(true);
   const [fontSize, setFontSize] = useState(14);
   const [openSections, setOpenSections] = useState<Set<PageSection>>(new Set());
 
@@ -296,6 +297,10 @@ export default function App() {
             });
         }
       }
+
+      if (message.type === 'MODE_CHANGED') {
+        setTranslationMode(message.translationMode);
+      }
     });
 
     return () => {
@@ -354,6 +359,12 @@ export default function App() {
     chrome.runtime.sendMessage({ type: 'BLOCK_INTERACTIVE_CHANGED', blockInteractive: enabled } satisfies Message);
   }, []);
 
+  // ─── Translation mode toggle ───────────────────────────────────────────────
+  const handleTranslationModeChange = useCallback((enabled: boolean) => {
+    setTranslationMode(enabled);
+    chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
+  }, []);
+
   // ─── Font size control ───────────────────────────────────────────────────────
   const handleFontSizeChange = useCallback((delta: number) => {
     setFontSize((prev) => {
@@ -375,7 +386,22 @@ export default function App() {
     <div className={styles.app}>
       <div className={styles.fixedHeader}>
         <header className={styles.header}>
-          <h1 className={styles.title}>Translator</h1>
+          <div className={styles.modeToggle}>
+            <button
+              className={`${styles.modeBtn} ${!translationMode ? styles.modeBtnActive : ''}`}
+              onClick={() => handleTranslationModeChange(false)}
+              title="Modalità lettura"
+            >
+              Lettura
+            </button>
+            <button
+              className={`${styles.modeBtn} ${translationMode ? styles.modeBtnActive : ''}`}
+              onClick={() => handleTranslationModeChange(true)}
+              title="Modalità traduzione"
+            >
+              Traduzione
+            </button>
+          </div>
           <button
             className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
             onClick={handleRefresh}

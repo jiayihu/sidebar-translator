@@ -50,7 +50,6 @@ let observerActive = false;
 let activated = false; // true after first EXTRACT_TEXT
 let translationMode = true; // Default: translation mode active
 let blockInteractive = false; // Default: don't block interactive elements
-let toggleButton: HTMLElement | null = null;
 
 // ─── Style injection ──────────────────────────────────────────────────────────
 
@@ -99,81 +98,11 @@ function injectStyles(): void {
       border-radius: 2px;
       animation: st-flash-animation 0.3s ease-in-out 1;
     }
-
-    /* Toggle button styles */
-    .st-toggle-container {
-      position: fixed;
-      top: 12px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 2147483647;
-      display: flex;
-      background: #ffffff;
-      border-radius: 24px;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
-      padding: 4px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      font-weight: 500;
-      transition: opacity 0.2s ease, transform 0.2s ease;
-    }
-    .st-toggle-container:hover {
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.08);
-    }
-    .st-toggle-btn {
-      padding: 8px 16px;
-      border: none;
-      background: transparent;
-      border-radius: 20px;
-      cursor: pointer;
-      color: #6b7280;
-      font-size: 13px;
-      font-weight: 500;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-    }
-    .st-toggle-btn:hover {
-      color: #374151;
-    }
-    .st-toggle-btn.active {
-      background: #4f46e5;
-      color: #ffffff;
-    }
-    .st-toggle-btn.active:hover {
-      background: #4338ca;
-    }
   `;
   document.head.appendChild(style);
 }
 
-// ─── Toggle Button ────────────────────────────────────────────────────────────
-
-function createToggleButton(): void {
-  if (toggleButton) return;
-
-  const container = document.createElement('div');
-  container.className = 'st-toggle-container';
-  container.innerHTML = `
-    <button class="st-toggle-btn" data-mode="read">📖 Lettura</button>
-    <button class="st-toggle-btn active" data-mode="translate">🌐 Traduzione</button>
-  `;
-
-  const buttons = container.querySelectorAll('.st-toggle-btn');
-  buttons.forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const mode = (btn as HTMLElement).dataset.mode;
-      setTranslationMode(mode === 'translate');
-    });
-  });
-
-  document.body.appendChild(container);
-  toggleButton = container;
-
-  // Set initial mode
-  updateModeUI();
-}
+// ─── Mode Management ────────────────────────────────────────────────────────────
 
 function setTranslationMode(enabled: boolean): void {
   translationMode = enabled;
@@ -190,14 +119,6 @@ function setTranslationMode(enabled: boolean): void {
 }
 
 function updateModeUI(): void {
-  if (!toggleButton) return;
-
-  const buttons = toggleButton.querySelectorAll('.st-toggle-btn');
-  buttons.forEach((btn) => {
-    const isTranslate = (btn as HTMLElement).dataset.mode === 'translate';
-    btn.classList.toggle('active', isTranslate === translationMode);
-  });
-
   document.body.classList.toggle(TRANSLATION_MODE_CLASS, translationMode);
   updateBlockInteractiveUI();
 }
@@ -558,14 +479,6 @@ function setupMutationObserver(): void {
     for (const record of records) {
       // Skip attribute mutations we caused ourselves
       if (record.type === 'attributes' && record.attributeName === ST_ATTR) continue;
-      // Skip our toggle button
-      if (record.type === 'childList') {
-        for (const node of record.addedNodes) {
-          if (node instanceof Element && node.classList.contains('st-toggle-container')) {
-            continue;
-          }
-        }
-      }
 
       if (record.type === 'childList') {
         for (const node of record.addedNodes) {
@@ -616,12 +529,16 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       activated = true;
       injectStyles();
       setupEventListeners();
-      createToggleButton();
     }
 
     const blocks = extractTextBlocks();
     setupMutationObserver();
     sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
+    return false;
+  }
+
+  if (message.type === 'SET_MODE') {
+    setTranslationMode(message.translationMode);
     return false;
   }
 
