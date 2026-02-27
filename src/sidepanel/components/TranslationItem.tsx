@@ -24,7 +24,6 @@ export const TranslationItem = forwardRef<HTMLDivElement, TranslationItemProps>(
         onMouseLeave={() => onMouseLeave(block.id)}
       >
         <p className={styles.translated}>{block.translated}</p>
-        <p className={styles.original}>{block.original}</p>
       </div>
     );
   },
