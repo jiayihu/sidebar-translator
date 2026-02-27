@@ -529,6 +529,7 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       activated = true;
       injectStyles();
       setupEventListeners();
+      updateModeUI(); // Apply initial translation mode state to body class
     }
 
     const blocks = extractTextBlocks();
