@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Sidebar Translator",
   "version": "1.0.0",
-  "description": "Translate any web page in a clean sidebar without changing the original content. Powered by Chrome's built-in AI for instant, accurate translations — no API keys or accounts needed.",
+  "description": "Translate in a sidebar without changing the original content. Powered by Chrome's built-in AI for instant, accurate translations.",
   "homepage_url": "https://github.com/jiayihu/sidebar-translator",
   "icons": {
     "16": "public/icons/icon16.png",
