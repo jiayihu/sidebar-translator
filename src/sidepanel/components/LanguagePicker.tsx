@@ -53,7 +53,12 @@ export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTarge
           </select>
         </div>
 
-        <span className={styles.arrow}>→</span>
+        <span className={styles.arrow}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </span>
 
         <div className={styles.selectWrapper}>
           <span className={styles.label}>To</span>
@@ -78,7 +83,15 @@ export function LanguagePicker({ sourceLang, targetLang, onSourceChange, onTarge
         disabled={isLoading}
         title="Translate page"
       >
-        <span className={styles.translateBtnIcon}>{isLoading ? '↻' : '▶'}</span>
+        <span className={styles.translateBtnIcon}>
+          {isLoading ? (
+            <span className={styles.spinner} />
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <path d="M6 4l15 8-15 8V4z" />
+            </svg>
+          )}
+        </span>
         <span>{isLoading ? 'Translating…' : 'Translate page'}</span>
       </button>
     </div>

@@ -304,17 +304,17 @@ export default function App() {
   return (
     <div className={styles.app}>
       <header className={styles.header}>
-        <div className={styles.titleGroup}>
-          <span className={styles.titleEyebrow}>Translate</span>
-          <h1 className={styles.title}>Sidebar</h1>
-        </div>
+        <h1 className={styles.title}>Translator</h1>
         <button
           className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
           onClick={handleRefresh}
           disabled={isLoading}
           title="Re-scan and translate page"
         >
-          ↺
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+            <path d="M21 3v5h-5" />
+          </svg>
         </button>
       </header>
 
@@ -363,8 +363,15 @@ export default function App() {
 
       {status === 'idle' && (
         <div className={styles.idlePlaceholder}>
-          <div className={styles.idleIcon}>⇄</div>
-          <p className={styles.idleText}>Choose languages and press <strong>Translate page</strong> to begin.</p>
+          <div className={styles.idleIcon}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M8 3 4 7l4 4" />
+              <path d="M4 7h16" />
+              <path d="m16 21 4-4-4-4" />
+              <path d="M20 17H4" />
+            </svg>
+          </div>
+          <p className={styles.idleText}>Press <strong>Translate page</strong> to start.</p>
         </div>
       )}
 
