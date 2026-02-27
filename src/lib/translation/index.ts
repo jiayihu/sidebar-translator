@@ -3,6 +3,9 @@ import type { ITranslator } from './types';
 
 export type { ITranslator };
 
+/** Module-level singleton to preserve translatorCache and detectorInstance across calls. */
+let chromeAIInstance: ChromeAITranslator | null = null;
+
 /**
  * Returns the Chrome AI translator for the given source language.
  * When sourceLang is 'auto', Chrome AI is only used if the Language Detector
@@ -12,7 +15,10 @@ export async function getTranslator(sourceLang = 'auto'): Promise<ITranslator> {
   if ('Translator' in self) {
     const canAutoDetect = sourceLang !== 'auto' || isLanguageDetectorAvailable();
     if (canAutoDetect) {
-      return new ChromeAITranslator();
+      if (!chromeAIInstance) {
+        chromeAIInstance = new ChromeAITranslator();
+      }
+      return chromeAIInstance;
     }
   }
 

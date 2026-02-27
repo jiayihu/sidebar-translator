@@ -19,7 +19,10 @@ declare global {
   }
 
   interface TranslatorFactory {
-    availability(options: { sourceLanguage: string; targetLanguage: string }): Promise<string>;
+    availability(options: {
+      sourceLanguage: string;
+      targetLanguage: string;
+    }): Promise<'available' | 'downloadable' | 'unsupported'>;
     create(options: TranslatorCreateOptions): Promise<Translator>;
   }
 
@@ -33,9 +36,13 @@ declare global {
     destroy(): void;
   }
 
+  interface LanguageDetectorCreateOptions {
+    monitor?: (monitor: EventTarget) => void;
+  }
+
   interface LanguageDetectorFactory {
-    availability(): Promise<string>;
-    create(): Promise<LanguageDetector>;
+    availability(): Promise<'readily' | 'downloadable' | 'no'>;
+    create(options?: LanguageDetectorCreateOptions): Promise<LanguageDetector>;
   }
 
   // eslint-disable-next-line no-var
@@ -57,12 +64,21 @@ export function isLanguageDetectorAvailable(): boolean {
 export async function detectPageLanguage(
   blocks: TextBlock[],
   pageLang: string | undefined,
+  onDownloadProgress?: (progress: number) => void,
 ): Promise<string | null> {
   if ('LanguageDetector' in self) {
     try {
       const avail = await LanguageDetector.availability();
-      if (avail !== 'unavailable') {
-        const detector = await LanguageDetector.create();
+      if (avail !== 'no') {
+        const detector = await LanguageDetector.create({
+          monitor: (m) => {
+            m.addEventListener('downloadprogress', (e: Event) => {
+              const loaded = (e as ProgressEvent).loaded;
+              console.info('[SidebarTranslator] Downloading language detector model...', loaded);
+              onDownloadProgress?.(loaded);
+            });
+          },
+        });
         const sample = blocks.slice(0, 8).map((b) => b.text).join(' ').slice(0, 600);
         const results = await detector.detect(sample);
         detector.destroy();
@@ -81,7 +97,10 @@ export class ChromeAITranslator implements ITranslator {
   private translatorCache = new Map<string, Translator>();
   private detectorInstance: LanguageDetector | null = null;
 
-  private async detectLanguage(texts: string[]): Promise<string> {
+  private async detectLanguage(
+    texts: string[],
+    onDownloadProgress?: (progress: number) => void,
+  ): Promise<string> {
     if (typeof LanguageDetector === 'undefined') {
       throw new Error(
         'Chrome AI: auto-detection requires the Language Detector API, which is not available in this browser. Please select a source language manually.',
@@ -89,12 +108,38 @@ export class ChromeAITranslator implements ITranslator {
     }
 
     if (!this.detectorInstance) {
-      this.detectorInstance = await LanguageDetector.create();
+      this.detectorInstance = await LanguageDetector.create({
+        monitor: (m) => {
+          m.addEventListener('downloadprogress', (e: Event) => {
+            const loaded = (e as ProgressEvent).loaded;
+            console.info('[SidebarTranslator] Downloading language detector model...', loaded);
+            onDownloadProgress?.(loaded);
+          });
+        },
+      });
     }
 
-    const sampleText = texts.find((t) => t.trim()) ?? '';
-    const results = await this.detectorInstance.detect(sampleText);
-    return results[0]?.detectedLanguage ?? 'en';
+    // Combine multiple blocks into a sample for better accuracy.
+    // Docs warn that short phrases and single words have low accuracy.
+    const sample = texts
+      .filter((t) => t.trim())
+      .slice(0, 8)
+      .join(' ')
+      .slice(0, 600);
+
+    if (!sample) {
+      throw new Error(
+        'Chrome AI: no text available for language detection. Please select a source language manually.',
+      );
+    }
+
+    const results = await this.detectorInstance.detect(sample);
+    if ((results[0]?.confidence ?? 0) <= 0.5) {
+      throw new Error(
+        'Chrome AI: language detection confidence is too low. Please select a source language manually.',
+      );
+    }
+    return results[0]!.detectedLanguage;
   }
 
   async translate(
@@ -104,7 +149,7 @@ export class ChromeAITranslator implements ITranslator {
     onDownloadProgress?: (progress: number) => void,
   ): Promise<string[]> {
     const actualSourceLang =
-      sourceLang === 'auto' ? await this.detectLanguage(texts) : sourceLang;
+      sourceLang === 'auto' ? await this.detectLanguage(texts, onDownloadProgress) : sourceLang;
 
     // Source and target are the same language — return originals unchanged
     if (actualSourceLang === targetLang) {
@@ -120,7 +165,7 @@ export class ChromeAITranslator implements ITranslator {
         targetLanguage: targetLang,
       });
 
-      if (availability === 'unavailable') {
+      if (availability === 'unsupported') {
         throw new Error(
           `Chrome AI Translator: language pair ${actualSourceLang}→${targetLang} is not available.`,
         );
