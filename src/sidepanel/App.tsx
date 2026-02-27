@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSettings, saveSettings } from '../lib/storage';
 import { getTranslator } from '../lib/translation';
-import { detectPageLanguage } from '../lib/translation/chrome-ai';
+import { detectPageLanguage, TranslatorDownloadRequiredError } from '../lib/translation/chrome-ai';
 import type { Message, TextBlock } from '../lib/messages';
 import { LanguagePicker } from './components/LanguagePicker';
 import { TranslationList } from './components/TranslationList';
 import type { TranslationBlock } from './components/TranslationItem';
 import styles from './App.module.css';
 
-type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error';
+type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error' | 'download-required';
 
 function scrollIntoViewIfNeeded(el: HTMLDivElement) {
   const rect = el.getBoundingClientRect();
@@ -25,19 +25,21 @@ async function translateRaw(
   sourceLang: string,
   targetLang: string,
   onDownloadProgress?: (progress: number) => void,
+  hasUserGesture: boolean = false,
 ): Promise<TranslationBlock[]> {
   // Same language on both sides — return originals without hitting any API
   if (sourceLang !== 'auto' && sourceLang === targetLang) {
-    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text }));
+    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section }));
   }
 
   const translator = await getTranslator(sourceLang);
   const texts = rawBlocks.map((b) => b.text);
-  const translated = await translator.translate(texts, sourceLang, targetLang, onDownloadProgress);
+  const translated = await translator.translate(texts, sourceLang, targetLang, onDownloadProgress, hasUserGesture);
   return rawBlocks.map((b, i) => ({
     id: b.id,
     original: b.text,
     translated: translated[i] ?? b.text,
+    section: b.section,
   }));
 }
 
@@ -46,6 +48,7 @@ const SKELETON_COUNT = 5;
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [flashingId, setFlashingId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
@@ -79,14 +82,20 @@ export default function App() {
     try {
       const detected = await detectPageLanguage(raw, pageLangRef.current);
       if (detected && langMatches(detected, tgt)) {
-        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
         setStatus('same-lang');
         return;
       }
-      const translated = await translateRaw(raw, src, tgt, handleDownloadProgress);
+      const translated = await translateRaw(raw, src, tgt, handleDownloadProgress, false);
       setBlocks(translated);
       setStatus('ready');
     } catch (err) {
+      if (err instanceof TranslatorDownloadRequiredError) {
+        // Model needs download - ask user to click translate button
+        setErrorMsg(err.message);
+        setStatus('download-required');
+        return;
+      }
       console.error('[SidebarTranslator] Retranslation failed', err);
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
@@ -124,16 +133,22 @@ export default function App() {
 
         const detected = await detectPageLanguage(rawBlocks, response.pageLang);
         if (detected && langMatches(detected, tgt)) {
-          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
           setStatus('same-lang');
           return;
         }
 
         setStatus('translating');
-        const translated = await translateRaw(rawBlocks, src, tgt, handleDownloadProgress);
+        const translated = await translateRaw(rawBlocks, src, tgt, handleDownloadProgress, true);
         setBlocks(translated);
         setStatus('ready');
       } catch (err) {
+        if (err instanceof TranslatorDownloadRequiredError) {
+          // This shouldn't happen since we pass hasUserGesture=true, but handle it just in case
+          setErrorMsg(err.message);
+          setStatus('download-required');
+          return;
+        }
         console.error('[SidebarTranslator] Extract/translate failed', err);
         setErrorMsg(err instanceof Error ? err.message : String(err));
         setStatus('error');
@@ -174,7 +189,12 @@ export default function App() {
       if (message.type === 'ELEMENT_CLICKED') {
         setActiveId(message.id);
         const el = itemRefs.current.get(message.id);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Trigger flash animation
+          setFlashingId(message.id);
+          setTimeout(() => setFlashingId(null), 300);
+        }
       }
 
       if (message.type === 'NEW_TEXT_BLOCKS') {
@@ -182,7 +202,7 @@ export default function App() {
         rawBlocksRef.current = [...rawBlocksRef.current, ...raw];
         const src = sourceLangRef.current;
         const tgt = targetLangRef.current;
-        translateRaw(raw, src, tgt)
+        translateRaw(raw, src, tgt, undefined, false)
           .then((newBlocks) => {
             setBlocks((prev) => {
               const existingIds = new Set(prev.map((b) => b.id));
@@ -190,24 +210,37 @@ export default function App() {
               return toAdd.length ? [...prev, ...toAdd] : prev;
             });
           })
-          .catch((err) => console.error('[SidebarTranslator] Failed to translate new blocks', err));
+          .catch((err) => {
+            if (err instanceof TranslatorDownloadRequiredError) {
+              // Silently ignore - user can click translate to download
+              return;
+            }
+            console.error('[SidebarTranslator] Failed to translate new blocks', err);
+          });
       }
 
       if (message.type === 'TEXT_UPDATED') {
         const { id, text } = message;
+        const existingBlock = rawBlocksRef.current.find((b) => b.id === id);
         rawBlocksRef.current = rawBlocksRef.current.map((b) =>
           b.id === id ? { ...b, text } : b,
         );
         const src = sourceLangRef.current;
         const tgt = targetLangRef.current;
-        translateRaw([{ id, text }], src, tgt)
-          .then(([updated]) => {
-            if (!updated) return;
-            setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)));
-          })
-          .catch((err) =>
-            console.error('[SidebarTranslator] Failed to re-translate block', id, err),
-          );
+        if (existingBlock) {
+          translateRaw([{ ...existingBlock, text }], src, tgt, undefined, false)
+            .then(([updated]) => {
+              if (!updated) return;
+              setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)));
+            })
+            .catch((err) => {
+              if (err instanceof TranslatorDownloadRequiredError) {
+                // Silently ignore - user can click translate to download
+                return;
+              }
+              console.error('[SidebarTranslator] Failed to re-translate block', id, err);
+            });
+        }
       }
     });
 
@@ -243,6 +276,10 @@ export default function App() {
 
   const handleItemMouseLeave = useCallback((id: string) => {
     chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
+  }, []);
+
+  const handleItemClick = useCallback((id: string) => {
+    chrome.runtime.sendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message);
   }, []);
 
   // ─── Language change handlers ─────────────────────────────────────────────
@@ -302,13 +339,21 @@ export default function App() {
 
       {status === 'downloading' && downloadProgress !== null && (
         <div className={`${styles.statusBar} ${styles.info}`}>
-          Downloading language model… {Math.round(downloadProgress * 100)}%
+          {downloadProgress >= 1
+            ? 'Preparing translator…'
+            : `Downloading language model… ${Math.round(downloadProgress * 100)}%`}
         </div>
       )}
 
       {status === 'same-lang' && (
         <div className={`${styles.statusBar} ${styles.info}`}>
           This page is already in the target language — showing original text.
+        </div>
+      )}
+
+      {status === 'download-required' && (
+        <div className={`${styles.statusBar} ${styles.info}`}>
+          {errorMsg || 'A language model needs to be downloaded. Click the translate button to start.'}
         </div>
       )}
 
@@ -340,9 +385,11 @@ export default function App() {
         <TranslationList
           blocks={blocks}
           activeId={activeId}
+          flashingId={flashingId}
           itemRefs={itemRefs}
           onItemMouseEnter={handleItemMouseEnter}
           onItemMouseLeave={handleItemMouseLeave}
+          onItemClick={handleItemClick}
         />
       )}
     </div>

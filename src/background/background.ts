@@ -5,8 +5,8 @@ const SIDEPANEL_PATH = 'src/sidepanel/index.html';
 // Tracks tabs that currently have the panel open so the action button toggles correctly
 const openedTabs = new Set<number>();
 
-// Map from tab ID → the sidepanel port monitoring that tab (supports multiple windows)
-const tabPorts = new Map<number, chrome.runtime.Port>();
+// Single sidepanel port (simpler and more reliable than per-tab mapping)
+let sidepanelPort: chrome.runtime.Port | null = null;
 
 // We handle the action click ourselves to get per-tab, toggle behaviour
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
@@ -32,6 +32,9 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
 
+  // Store the sidepanel port directly
+  sidepanelPort = port;
+
   // Capture the active tab at connect time. When the port later disconnects
   // (user pressed X to close the panel), remove the tab from openedTabs so
   // the next action click re-opens rather than double-toggling to close.
@@ -39,10 +42,8 @@ chrome.runtime.onConnect.addListener((port) => {
     const tabId = tabs[0]?.id;
     if (tabId == null) return;
 
-    tabPorts.set(tabId, port);
-
     port.onDisconnect.addListener(() => {
-      tabPorts.delete(tabId);
+      sidepanelPort = null;
       openedTabs.delete(tabId);
     });
   });
@@ -51,7 +52,6 @@ chrome.runtime.onConnect.addListener((port) => {
 // Clean up when a tab is closed
 chrome.tabs.onRemoved.addListener((tabId) => {
   openedTabs.delete(tabId);
-  tabPorts.delete(tabId);
 });
 
 // Relay messages between content script and side panel
@@ -80,17 +80,17 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'ELEMENT_HOVERED' ||
     message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
-    message.type === 'TEXT_UPDATED'
+    message.type === 'TEXT_UPDATED' ||
+    message.type === 'MODE_CHANGED'
   ) {
-    // Only forward to the sidepanel port associated with this specific tab
-    if (senderTabId != null) {
-      const port = tabPorts.get(senderTabId);
-      if (port) port.postMessage(message);
+    // Forward to sidepanel if connected
+    if (sidepanelPort) {
+      sidepanelPort.postMessage(message);
     }
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT') {
+  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
@@ -103,8 +103,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
   }
 
   if (senderTabId != null && message.type === 'PAGE_TEXT') {
-    const port = tabPorts.get(senderTabId);
-    if (port) port.postMessage(message);
+    if (sidepanelPort) {
+      sidepanelPort.postMessage(message);
+    }
   }
 
   return false;

@@ -76,3 +76,19 @@
 .item.active .original {
   color: rgba(255, 255, 255, 0.48);
 }
+
+/* Flash animation for selected items */
+@keyframes flash {
+  0%, 100% {
+    box-shadow: 0 6px 20px rgba(24, 24, 26, 0.18);
+    border-left-color: var(--accent-light);
+  }
+  50% {
+    box-shadow: 0 6px 25px rgba(79, 70, 229, 0.45);
+    border-left-color: var(--accent);
+  }
+}
+
+.item.flash {
+  animation: flash 0.3s ease-in-out 1;
+}
