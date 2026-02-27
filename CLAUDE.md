@@ -65,3 +65,7 @@ Content script attaches a `MutationObserver` after initial extraction with 400ms
 - `.st-highlight` – soft purple outline (hover from sidebar)
 - `.st-selected` – stronger highlight (click from page → scroll sidebar)
 - `data-st-id="st-N"` – unique ID attribute on each block-level text element
+
+## Workflow
+- After making code edits, always run `npm run build` to verify the build succeeds before committing.
+- After a successful build, commit the changes (do not wait for the user to ask).
