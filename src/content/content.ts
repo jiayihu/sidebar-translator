@@ -293,7 +293,7 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
   for (const [el, texts] of blockMap) {
     const text = texts.join(' ').trim();
     if (!text) continue;
-    const id = assignId(el);
+    const id = assignId(el, text);
     const section = getPageSection(el);
     blocks.push({ id, text, section });
   }
