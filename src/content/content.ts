@@ -36,6 +36,7 @@ const SKIP_TAGS = new Set([
 const ST_ATTR = 'data-st-id';
 const HIGHLIGHT_CLASS = 'st-highlight';
 const SELECTED_CLASS = 'st-selected';
+const FLASH_CLASS = 'st-flash';
 const TRANSLATION_MODE_CLASS = 'st-translation-mode';
 const BLOCK_INTERACTIVE_CLASS = 'st-block-interactive';
 const DEBOUNCE_MS = 400;
@@ -85,6 +86,18 @@ function injectStyles(): void {
     body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] label,
     body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
       pointer-events: none !important;
+    }
+
+    /* Flash animation for selected elements */
+    @keyframes st-flash {
+      0% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.25); }
+      50% { outline-color: #818cf8; background-color: rgba(129, 140, 248, 0.4); }
+      100% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.18); }
+    }
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${FLASH_CLASS} {
+      outline: 2px solid #4f46e5 !important;
+      border-radius: 2px;
+      animation: st-flash 0.4s ease-in-out 1;
     }
   `;
   document.head.appendChild(style);
@@ -393,7 +406,19 @@ function unhighlightElement(id: string): void {
 function scrollToElement(id: string): void {
   const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
   if (!el) return;
+
+  // Scroll into view
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Flash animation
+  el.classList.remove(FLASH_CLASS);
+  void el.offsetWidth; // Force reflow to restart animation
+  el.classList.add(FLASH_CLASS);
+
+  // Remove flash class after animation completes
+  setTimeout(() => {
+    el.classList.remove(FLASH_CLASS);
+  }, 400);
 }
 
 // ─── MutationObserver ─────────────────────────────────────────────────────────

@@ -57,7 +57,8 @@
 
 .item.active {
   border-color: var(--accent);
-  box-shadow: 0 6px 20px rgba(24, 24, 26, 0.08);
+  background: var(--accent-pale);
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.15);
   transform: translateY(-1px);
 }
 
@@ -75,7 +76,7 @@
 }
 
 .item.active .translated {
-  color: #ffffff;
+  color: var(--accent);
 }
 
 /* Original — smaller, muted */
