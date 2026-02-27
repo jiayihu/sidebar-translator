@@ -8,7 +8,7 @@ import { TranslationList } from './components/TranslationList';
 import type { TranslationBlock } from './components/TranslationItem';
 import styles from './App.module.css';
 
-type Status = 'idle' | 'extracting' | 'translating' | 'ready' | 'same-lang' | 'error';
+type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error';
 
 function scrollIntoViewIfNeeded(el: HTMLDivElement) {
   const rect = el.getBoundingClientRect();
@@ -24,6 +24,7 @@ async function translateRaw(
   rawBlocks: TextBlock[],
   sourceLang: string,
   targetLang: string,
+  onDownloadProgress?: (progress: number) => void,
 ): Promise<TranslationBlock[]> {
   // Same language on both sides — return originals without hitting any API
   if (sourceLang !== 'auto' && sourceLang === targetLang) {
@@ -32,7 +33,7 @@ async function translateRaw(
 
   const translator = await getTranslator(sourceLang);
   const texts = rawBlocks.map((b) => b.text);
-  const translated = await translator.translate(texts, sourceLang, targetLang);
+  const translated = await translator.translate(texts, sourceLang, targetLang, onDownloadProgress);
   return rawBlocks.map((b, i) => ({
     id: b.id,
     original: b.text,
@@ -46,6 +47,7 @@ export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
@@ -59,6 +61,12 @@ export default function App() {
   // Track whether initial extraction has run
   const initializedRef = useRef(false);
 
+  // ─── Download progress callback for model downloads ─────────────────────
+  const handleDownloadProgress = useCallback((progress: number) => {
+    setStatus('downloading');
+    setDownloadProgress(progress);
+  }, []);
+
   // ─── Re-translate stored raw blocks with given languages ────────────────
   const retranslate = useCallback(async (src: string, tgt: string) => {
     const raw = rawBlocksRef.current;
@@ -67,6 +75,7 @@ export default function App() {
     setStatus('translating');
     setBlocks([]);
     setErrorMsg('');
+    setDownloadProgress(null);
     try {
       const detected = await detectPageLanguage(raw, pageLangRef.current);
       if (detected && langMatches(detected, tgt)) {
@@ -74,7 +83,7 @@ export default function App() {
         setStatus('same-lang');
         return;
       }
-      const translated = await translateRaw(raw, src, tgt);
+      const translated = await translateRaw(raw, src, tgt, handleDownloadProgress);
       setBlocks(translated);
       setStatus('ready');
     } catch (err) {
@@ -82,7 +91,7 @@ export default function App() {
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
     }
-  }, []);
+  }, [handleDownloadProgress]);
 
   // ─── Extract from DOM + translate ───────────────────────────────────────
   const extractAndTranslate = useCallback(
@@ -90,6 +99,7 @@ export default function App() {
       setStatus('extracting');
       setBlocks([]);
       setErrorMsg('');
+      setDownloadProgress(null);
       rawBlocksRef.current = [];
 
       try {
@@ -120,7 +130,7 @@ export default function App() {
         }
 
         setStatus('translating');
-        const translated = await translateRaw(rawBlocks, src, tgt);
+        const translated = await translateRaw(rawBlocks, src, tgt, handleDownloadProgress);
         setBlocks(translated);
         setStatus('ready');
       } catch (err) {
@@ -129,7 +139,7 @@ export default function App() {
         setStatus('error');
       }
     },
-    [],
+    [handleDownloadProgress],
   );
 
   // ─── Initialize: load settings only (translation is user-triggered) ────
@@ -251,7 +261,7 @@ export default function App() {
     extractAndTranslate(sourceLangRef.current, targetLangRef.current);
   }, [extractAndTranslate]);
 
-  const isLoading = status === 'extracting' || status === 'translating';
+  const isLoading = status === 'extracting' || status === 'downloading' || status === 'translating';
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
@@ -287,6 +297,12 @@ export default function App() {
             <div className={styles.beamFill} />
           </div>
           <span className={styles.beamChip}>{targetLang}</span>
+        </div>
+      )}
+
+      {status === 'downloading' && downloadProgress !== null && (
+        <div className={`${styles.statusBar} ${styles.info}`}>
+          Downloading language model… {Math.round(downloadProgress * 100)}%
         </div>
       )}
 

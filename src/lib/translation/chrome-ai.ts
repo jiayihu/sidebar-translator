@@ -45,7 +45,7 @@ declare global {
 }
 
 export function isLanguageDetectorAvailable(): boolean {
-  return typeof LanguageDetector !== 'undefined';
+  return 'LanguageDetector' in self;
 }
 
 /**
@@ -58,7 +58,7 @@ export async function detectPageLanguage(
   blocks: TextBlock[],
   pageLang: string | undefined,
 ): Promise<string | null> {
-  if (typeof LanguageDetector !== 'undefined') {
+  if ('LanguageDetector' in self) {
     try {
       const avail = await LanguageDetector.availability();
       if (avail !== 'unavailable') {
@@ -97,7 +97,12 @@ export class ChromeAITranslator implements ITranslator {
     return results[0]?.detectedLanguage ?? 'en';
   }
 
-  async translate(texts: string[], sourceLang: string, targetLang: string): Promise<string[]> {
+  async translate(
+    texts: string[],
+    sourceLang: string,
+    targetLang: string,
+    onDownloadProgress?: (progress: number) => void,
+  ): Promise<string[]> {
     const actualSourceLang =
       sourceLang === 'auto' ? await this.detectLanguage(texts) : sourceLang;
 
@@ -124,14 +129,15 @@ export class ChromeAITranslator implements ITranslator {
       translator = await Translator.create({
         sourceLanguage: actualSourceLang,
         targetLanguage: targetLang,
-        monitor:
-          availability === 'downloadable'
-            ? (m) => {
-                m.addEventListener('downloadprogress', (e) => {
-                  console.info('[SidebarTranslator] Downloading language model...', e);
-                });
-              }
-            : undefined,
+        // Always attach monitor: the API hides actual download status for privacy,
+        // reporting all pairs as downloadable until a translator is actually created.
+        monitor: (m) => {
+          m.addEventListener('downloadprogress', (e: Event) => {
+            const loaded = (e as ProgressEvent).loaded;
+            console.info('[SidebarTranslator] Downloading language model...', loaded);
+            onDownloadProgress?.(loaded);
+          });
+        },
       });
 
       this.translatorCache.set(cacheKey, translator);

@@ -9,7 +9,7 @@ export type { ITranslator };
  * API is also available (required for auto-detection).
  */
 export async function getTranslator(sourceLang = 'auto'): Promise<ITranslator> {
-  if (typeof Translator !== 'undefined') {
+  if ('Translator' in self) {
     const canAutoDetect = sourceLang !== 'auto' || isLanguageDetectorAvailable();
     if (canAutoDetect) {
       return new ChromeAITranslator();
