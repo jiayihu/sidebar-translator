@@ -322,7 +322,7 @@ export default function App() {
         setErrorMsg('');
         setDownloadProgress(null);
         rawBlocksRef.current = [];
-        setOpenSections(new Set());
+        setOpenSections(new Set(['main', 'article'] as PageSection[]));
       }
     });
 
@@ -560,6 +560,7 @@ export default function App() {
               onItemMouseEnter={handleItemMouseEnter}
               onItemMouseLeave={handleItemMouseLeave}
               onItemClick={handleItemClick}
+              showEmpty={status === 'ready' || status === 'same-lang'}
             />
           </div>
         )}

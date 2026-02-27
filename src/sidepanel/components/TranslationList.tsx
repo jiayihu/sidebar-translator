@@ -28,6 +28,7 @@ interface TranslationListProps {
   onItemMouseEnter: (id: string) => void;
   onItemMouseLeave: (id: string) => void;
   onItemClick: (id: string) => void;
+  showEmpty?: boolean; // Only show empty state when explicitly requested
 }
 
 export function TranslationList({
@@ -40,6 +41,7 @@ export function TranslationList({
   onItemMouseEnter,
   onItemMouseLeave,
   onItemClick,
+  showEmpty = false,
 }: TranslationListProps) {
   const groupedBlocks = useMemo(() => {
     const groups = new Map<PageSection, TranslationBlock[]>();
@@ -51,7 +53,7 @@ export function TranslationList({
     return groups;
   }, [blocks]);
 
-  if (blocks.length === 0) {
+  if (blocks.length === 0 && showEmpty) {
     return (
       <div className={styles.empty}>
         <span className={styles.emptyGlyph}>
