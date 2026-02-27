@@ -38,6 +38,7 @@ const HIGHLIGHT_CLASS = 'st-highlight';
 const SELECTED_CLASS = 'st-selected';
 const FLASH_CLASS = 'st-flash';
 const TRANSLATION_MODE_CLASS = 'st-translation-mode';
+const BLOCK_INTERACTIVE_CLASS = 'st-block-interactive';
 const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -48,6 +49,7 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
 let activated = false; // true after first EXTRACT_TEXT
 let translationMode = true; // Default: translation mode active
+let blockInteractive = false; // Default: don't block interactive elements
 let toggleButton: HTMLElement | null = null;
 
 // ─── Style injection ──────────────────────────────────────────────────────────
@@ -74,16 +76,16 @@ function injectStyles(): void {
       cursor: pointer !important;
     }
 
-    /* Disable all interactive elements in translation mode */
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a *,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] button,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] input,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] select,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] textarea,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [role="button"],
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] label,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
+    /* Block interactive elements when enabled */
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a *,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] button,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] input,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] select,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] textarea,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [role="button"],
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] label,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
       pointer-events: none !important;
     }
 
@@ -197,6 +199,16 @@ function updateModeUI(): void {
   });
 
   document.body.classList.toggle(TRANSLATION_MODE_CLASS, translationMode);
+  updateBlockInteractiveUI();
+}
+
+function updateBlockInteractiveUI(): void {
+  document.body.classList.toggle(BLOCK_INTERACTIVE_CLASS, blockInteractive && translationMode);
+}
+
+function setBlockInteractive(enabled: boolean): void {
+  blockInteractive = enabled;
+  updateBlockInteractiveUI();
 }
 
 // ─── DOM Utilities ────────────────────────────────────────────────────────────
@@ -371,6 +383,8 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
 let currentHighlightId: string | null = null;
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const HOVER_DEBOUNCE_MS = 300;
 
 function setupEventListeners(): void {
   document.addEventListener('mouseover', (e) => {
@@ -381,8 +395,15 @@ function setupEventListeners(): void {
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
     if (id === currentHighlightId) return;
-    currentHighlightId = id;
 
+    // Clear any pending debounce timer
+    if (hoverDebounceTimer) {
+      clearTimeout(hoverDebounceTimer);
+      hoverDebounceTimer = null;
+    }
+
+    // Update highlight immediately for visual feedback
+    currentHighlightId = id;
     if (id) {
       highlightElement(id);
     } else if (currentHighlightedEl) {
@@ -390,7 +411,11 @@ function setupEventListeners(): void {
       currentHighlightedEl = null;
     }
 
-    safeSendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message);
+    // Debounce the message to sidebar to avoid rapid scrolling
+    hoverDebounceTimer = setTimeout(() => {
+      hoverDebounceTimer = null;
+      safeSendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message);
+    }, HOVER_DEBOUNCE_MS);
   });
 
   document.addEventListener('mouseout', (e) => {
@@ -403,6 +428,12 @@ function setupEventListeners(): void {
     const relatedTarget = e.relatedTarget as Element | null;
     const stillInside = relatedTarget ? el.contains(relatedTarget) : false;
     if (!stillInside) {
+      // Clear any pending debounce timer
+      if (hoverDebounceTimer) {
+        clearTimeout(hoverDebounceTimer);
+        hoverDebounceTimer = null;
+      }
+
       currentHighlightId = null;
       if (currentHighlightedEl) {
         currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
@@ -422,12 +453,8 @@ function setupEventListeners(): void {
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
 
-    // Prevent default link behavior
-    e.preventDefault();
-    e.stopPropagation();
-
     safeSendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
-  }, true); // Use capture phase to intercept before default handlers
+  });
 }
 
 // ─── Highlight Handlers ───────────────────────────────────────────────────────
@@ -616,6 +643,11 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     if (translationMode) {
       scrollAndFlashElement(message.id);
     }
+    return false;
+  }
+
+  if (message.type === 'BLOCK_INTERACTIVE_CHANGED') {
+    setBlockInteractive(message.blockInteractive);
     return false;
   }
 

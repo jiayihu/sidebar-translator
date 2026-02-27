@@ -16,4 +16,5 @@ export type Message =
   | { type: 'HIGHLIGHT_ELEMENT'; id: string }
   | { type: 'UNHIGHLIGHT_ELEMENT'; id: string }
   | { type: 'SCROLL_TO_ELEMENT'; id: string }
-  | { type: 'MODE_CHANGED'; translationMode: boolean };
+  | { type: 'MODE_CHANGED'; translationMode: boolean }
+  | { type: 'BLOCK_INTERACTIVE_CHANGED'; blockInteractive: boolean };

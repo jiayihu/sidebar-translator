@@ -1,11 +1,15 @@
 export interface Settings {
   targetLanguage: string;
   sourceLanguage: string;
+  blockInteractive: boolean;
+  fontSize: number;
 }
 
 const DEFAULTS: Settings = {
   targetLanguage: 'en',
   sourceLanguage: 'auto',
+  blockInteractive: false,
+  fontSize: 14,
 };
 
 export async function getSettings(): Promise<Settings> {

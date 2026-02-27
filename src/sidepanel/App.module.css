@@ -6,6 +6,22 @@
   background: var(--bg);
 }
 
+/* ── Fixed header section ───────────────────────────────────────────── */
+
+.fixedHeader {
+  flex-shrink: 0;
+}
+
+/* ── Scrollable content section ─────────────────────────────────────── */
+
+.scrollableContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
 /* ── Header ────────────────────────────────────────────────────────── */
 
 .header {
@@ -271,4 +287,81 @@
   margin-bottom: 0;
   animation-delay: 0.15s;
   width: 52%;
+}
+
+/* ── Settings row ────────────────────────────────────────────────────── */
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.checkboxLabel input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.checkboxLabel span {
+  user-select: none;
+}
+
+.checkboxLabel:hover {
+  color: var(--ink-mid);
+}
+
+.fontSizeControl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fontSizeBtn {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--ink-mid);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.fontSizeBtn:hover:not(:disabled) {
+  background: var(--surface-hover);
+  border-color: var(--border-mid);
+}
+
+.fontSizeBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fontSizeValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-mid);
+  min-width: 18px;
+  text-align: center;
 }

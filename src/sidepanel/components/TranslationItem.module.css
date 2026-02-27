@@ -67,8 +67,21 @@
 
 /* Translated — primary */
 .translated {
+  margin: 0 0 5px;
+  font-size: var(--translation-font-size, 14px);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.item.active .translated {
+  color: #ffffff;
+}
+
+/* Original — smaller, muted */
+.original {
   margin: 0;
-  font-size: 14px;
+  font-size: calc(var(--translation-font-size, 14px) - 2px);
   font-weight: 400;
   line-height: 1.65;
   letter-spacing: 0.005em;
