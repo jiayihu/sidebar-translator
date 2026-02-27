@@ -21,7 +21,7 @@ const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let idCounter = 0;
+let hashCounts = new Map<string, number>();
 let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
@@ -89,12 +89,25 @@ function getBlockParent(node: Node): HTMLElement | null {
 
 // ─── Text Extraction ──────────────────────────────────────────────────────────
 
-function assignId(el: HTMLElement): string {
+/** FNV-1a 32-bit hash → base-36 string (short and deterministic) */
+function textHash(text: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function assignId(el: HTMLElement, text: string): string {
+  // During partial extraction (mutations), keep existing IDs
   const existing = el.getAttribute(ST_ATTR);
   if (existing) return existing;
 
-  idCounter += 1;
-  const id = `st-${idCounter}`;
+  const h = textHash(text);
+  const n = hashCounts.get(h) ?? 0;
+  hashCounts.set(h, n + 1);
+  const id = n === 0 ? `st-${h}` : `st-${h}-${n}`;
 
   // Temporarily disconnect to avoid observer feedback loop
   if (observerActive && observer) {
@@ -111,6 +124,22 @@ function assignId(el: HTMLElement): string {
 }
 
 function extractTextBlocks(root: Element = document.body): TextBlock[] {
+  const isFullExtraction = root === document.body;
+
+  if (isFullExtraction) {
+    // Disconnect observer so attribute removals don't trigger it
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+      observerActive = false;
+    }
+    // Strip all existing IDs and reset hash counts for a clean, deterministic pass
+    document.querySelectorAll(`[${ST_ATTR}]`).forEach((el) => {
+      el.removeAttribute(ST_ATTR);
+    });
+    hashCounts.clear();
+  }
+
   const blockMap = new Map<HTMLElement, string[]>();
 
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -150,7 +179,7 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
   for (const [el, texts] of blockMap) {
     const text = texts.join(' ').trim();
     if (!text) continue;
-    const id = assignId(el);
+    const id = assignId(el, text);
     blocks.push({ id, text });
   }
 
