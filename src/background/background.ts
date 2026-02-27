@@ -54,6 +54,16 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   tabPorts.delete(tabId);
 });
 
+// Notify sidebar when a tab is refreshed (navigated to same URL or reloaded)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    const port = tabPorts.get(tabId);
+    if (port) {
+      port.postMessage({ type: 'PAGE_REFRESHED' } as Message);
+    }
+  }
+});
+
 // Relay messages between content script and side panel
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
   const senderTabId = sender.tab?.id;

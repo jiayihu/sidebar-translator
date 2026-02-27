@@ -301,6 +301,18 @@ export default function App() {
       if (message.type === 'MODE_CHANGED') {
         setTranslationMode(message.translationMode);
       }
+
+      if (message.type === 'PAGE_REFRESHED') {
+        // Reset state when page is refreshed
+        setBlocks([]);
+        setActiveId(null);
+        setFlashingId(null);
+        setStatus('idle');
+        setErrorMsg('');
+        setDownloadProgress(null);
+        rawBlocksRef.current = [];
+        setOpenSections(new Set());
+      }
     });
 
     return () => {
