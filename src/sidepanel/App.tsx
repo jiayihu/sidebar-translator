@@ -92,6 +92,7 @@ export default function App() {
         setFlashingId(pendingScrollId);
         setTimeout(() => setFlashingId(null), 300);
         setPendingScrollId(null);
+        return; // Element found, no need for timeout
       }
       // If element still not found after section opens, clear pending after timeout
       // This prevents stale pending scrolls from blocking future ones
@@ -229,16 +230,15 @@ export default function App() {
         if (message.id === null) {
           setActiveId(null);
         } else {
+          setActiveId(message.id);
           const el = itemRefs.current.get(message.id);
           if (el) {
-            setActiveId(message.id);
             scrollIntoViewIfNeeded(el);
           } else {
             // Element might be in a collapsed accordion - open its section
             const section = blockToSectionRef.current.get(message.id);
             if (section && !openSectionsRef.current.has(section)) {
               setOpenSections((prev) => new Set(prev).add(section));
-              setActiveId(message.id);
               setPendingScrollId(message.id);
             }
           }
