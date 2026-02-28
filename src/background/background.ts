@@ -72,11 +72,13 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id == null) {
+        console.warn('[SidebarTranslator] EXTRACT_TEXT: no active tab found');
         sendResponse(null);
         return;
       }
       chrome.tabs.sendMessage(activeTab.id, message, (response) => {
         if (chrome.runtime.lastError) {
+          console.warn('[SidebarTranslator] EXTRACT_TEXT failed for tab', activeTab.id, chrome.runtime.lastError.message);
           sendResponse(null);
           return;
         }

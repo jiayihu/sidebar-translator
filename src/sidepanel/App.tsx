@@ -217,8 +217,7 @@ export default function App() {
 
   // ─── Connect to background via long-lived port ───────────────────────────
   useEffect(() => {
-    const port = chrome.runtime.connect({ name: 'sidepanel' });
-    portRef.current = port;
+    let disposed = false;
 
     /** Ensure the accordion section for a block is open, scheduling a scroll if needed. */
     function ensureSectionOpen(id: string) {
@@ -229,7 +228,7 @@ export default function App() {
       }
     }
 
-    port.onMessage.addListener((message: Message) => {
+    function handlePortMessage(message: Message) {
       if (message.type === 'ELEMENT_HOVERED') {
         if (message.id === null) {
           setActiveId(null);
@@ -300,10 +299,27 @@ export default function App() {
         rawBlocksRef.current = [];
         setOpenSections(new Set(['main', 'article'] as PageSection[]));
       }
-    });
+    }
+
+    function connectPort() {
+      if (disposed) return;
+      const port = chrome.runtime.connect({ name: 'sidepanel' });
+      portRef.current = port;
+      port.onMessage.addListener(handlePortMessage);
+      port.onDisconnect.addListener(() => {
+        portRef.current = null;
+        // Reconnect after a short delay (service worker may have been suspended)
+        if (!disposed) {
+          setTimeout(connectPort, 500);
+        }
+      });
+    }
+
+    connectPort();
 
     return () => {
-      port.disconnect();
+      disposed = true;
+      portRef.current?.disconnect();
       portRef.current = null;
     };
     // Port only needs to be created once; language values are accessed via refs below
@@ -323,15 +339,15 @@ export default function App() {
 
   // ─── Sidebar ↔ page highlight ────────────────────────────────────────────
   const handleItemMouseEnter = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'HIGHLIGHT_ELEMENT', id } satisfies Message);
+    chrome.runtime.sendMessage({ type: 'HIGHLIGHT_ELEMENT', id } satisfies Message).catch(() => {});
   }, []);
 
   const handleItemMouseLeave = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
+    chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message).catch(() => {});
   }, []);
 
   const handleItemClick = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message);
+    chrome.runtime.sendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message).catch(() => {});
   }, []);
 
   // ─── Language change handlers ─────────────────────────────────────────────
@@ -349,7 +365,7 @@ export default function App() {
   const handleTranslationModeChange = useCallback((enabled: boolean) => {
     setTranslationMode(enabled);
     saveSettings({ translationMode: enabled });
-    chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
+    chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message).catch(() => {});
   }, []);
 
   // ─── Font size control ───────────────────────────────────────────────────────

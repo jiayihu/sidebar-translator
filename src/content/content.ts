@@ -496,9 +496,14 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       });
     }
 
-    const blocks = extractTextBlocks();
-    setupMutationObserver();
-    sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
+    try {
+      const blocks = extractTextBlocks();
+      setupMutationObserver();
+      sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
+    } catch (err) {
+      console.error('[SidebarTranslator] extractTextBlocks failed', err);
+      sendResponse({ type: 'PAGE_TEXT', blocks: [], pageLang: undefined });
+    }
     return false;
   }
 
