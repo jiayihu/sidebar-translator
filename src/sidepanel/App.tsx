@@ -1,14 +1,44 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SKELETON_COUNT } from '../lib/constants';
 import { getSettings, saveSettings } from '../lib/storage';
 import { getTranslator } from '../lib/translation';
 import { detectPageLanguage, TranslatorDownloadRequiredError } from '../lib/translation/chrome-ai';
 import type { Message, PageSection, TextBlock } from '../lib/messages';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { LanguagePicker } from './components/LanguagePicker';
 import { TranslationList } from './components/TranslationList';
 import type { TranslationBlock } from './components/TranslationItem';
+import { useRefSync } from './hooks/useRefSync';
 import styles from './App.module.css';
 
 type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error' | 'download-required';
+
+// ─── Error Handling Utility ──────────────────────────────────────────────────
+
+interface TranslationErrorResult {
+  errorMsg: string;
+  status: 'error' | 'download-required';
+}
+
+/**
+ * Handles translation errors uniformly, extracting the appropriate error message
+ * and status based on the error type.
+ */
+function handleTranslationError(err: unknown, context: string): TranslationErrorResult {
+  if (err instanceof TranslatorDownloadRequiredError) {
+    return {
+      errorMsg: err.message,
+      status: 'download-required',
+    };
+  }
+  console.error(`[SidebarTranslator] ${context}`, err);
+  return {
+    errorMsg: err instanceof Error ? err.message : String(err),
+    status: 'error',
+  };
+}
+
+// ─── Helper Functions ──────────────────────────────────────────────────────────
 
 function scrollIntoViewIfNeeded(el: HTMLDivElement) {
   const rect = el.getBoundingClientRect();
@@ -18,6 +48,22 @@ function scrollIntoViewIfNeeded(el: HTMLDivElement) {
 
 function langMatches(a: string, b: string): boolean {
   return a.toLowerCase().split('-')[0] === b.toLowerCase().split('-')[0];
+}
+
+/**
+ * Safely send a message to the runtime, handling the case where the extension
+ * context has been invalidated (e.g., extension reloaded or updated).
+ */
+function safeSendMessage(message: Message): boolean {
+  try {
+    if (!chrome.runtime?.id) {
+      return false;
+    }
+    chrome.runtime.sendMessage(message).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function translateRaw(
@@ -42,8 +88,6 @@ async function translateRaw(
     section: b.section,
   }));
 }
-
-const SKELETON_COUNT = 5;
 
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
@@ -76,11 +120,11 @@ export default function App() {
     return map;
   }, [blocks]);
 
-  // Refs for accessing current values in port message handler
-  const blockToSectionRef = useRef(blockToSection);
-  const openSectionsRef = useRef(openSections);
-  useEffect(() => { blockToSectionRef.current = blockToSection; }, [blockToSection]);
-  useEffect(() => { openSectionsRef.current = openSections; }, [openSections]);
+  // Refs for accessing current values in port message handler (using useRefSync hook)
+  const blockToSectionRef = useRefSync(blockToSection);
+  const openSectionsRef = useRefSync(openSections);
+  const sourceLangRef = useRefSync(sourceLang);
+  const targetLangRef = useRefSync(targetLang);
 
   // ─── Scroll to pending element after section opens ───────────────────────────
   // This effect runs after React completes the render, ensuring the element is visible
@@ -90,9 +134,9 @@ export default function App() {
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         setFlashingId(pendingScrollId);
-        setTimeout(() => setFlashingId(null), 300);
+        const flashTimeout = setTimeout(() => setFlashingId(null), 300);
         setPendingScrollId(null);
-        return; // Element found, no need for timeout
+        return () => clearTimeout(flashTimeout); // Element found, no need for timeout
       }
       // If element still not found after section opens, clear pending after timeout
       // This prevents stale pending scrolls from blocking future ones
@@ -107,11 +151,6 @@ export default function App() {
   const pageLangRef = useRef<string | undefined>(undefined);
   // Track whether initial extraction has run
   const initializedRef = useRef(false);
-  // Refs so the port message handler always sees current language values
-  const sourceLangRef = useRef(sourceLang);
-  const targetLangRef = useRef(targetLang);
-  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
-  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
 
   // ─── Download progress callback for model downloads ─────────────────────
   const handleDownloadProgress = useCallback((progress: number) => {
@@ -139,15 +178,9 @@ export default function App() {
       setBlocks(translated);
       setStatus('ready');
     } catch (err) {
-      if (err instanceof TranslatorDownloadRequiredError) {
-        // Model needs download - ask user to click translate button
-        setErrorMsg(err.message);
-        setStatus('download-required');
-        return;
-      }
-      console.error('[SidebarTranslator] Retranslation failed', err);
-      setErrorMsg(err instanceof Error ? err.message : String(err));
-      setStatus('error');
+      const { errorMsg, status } = handleTranslationError(err, 'Retranslation failed');
+      setErrorMsg(errorMsg);
+      setStatus(status);
     }
   }, [handleDownloadProgress]);
 
@@ -192,15 +225,9 @@ export default function App() {
         setBlocks(translated);
         setStatus('ready');
       } catch (err) {
-        if (err instanceof TranslatorDownloadRequiredError) {
-          // This shouldn't happen since we pass hasUserGesture=true, but handle it just in case
-          setErrorMsg(err.message);
-          setStatus('download-required');
-          return;
-        }
-        console.error('[SidebarTranslator] Extract/translate failed', err);
-        setErrorMsg(err instanceof Error ? err.message : String(err));
-        setStatus('error');
+        const { errorMsg, status } = handleTranslationError(err, 'Extract/translate failed');
+        setErrorMsg(errorMsg);
+        setStatus(status);
       }
     },
     [handleDownloadProgress],
@@ -225,10 +252,16 @@ export default function App() {
     const port = chrome.runtime.connect({ name: 'sidepanel' });
     portRef.current = port;
 
+    // Add disconnect listener to handle port disconnection gracefully
+    port.onDisconnect.addListener(() => {
+      portRef.current = null;
+    });
+
     // Send the tab ID to the background script so it knows which tab this sidepanel is attached to
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const tabId = tabs[0]?.id;
-      if (tabId != null) {
+      // Check if port is still connected before posting (race condition fix)
+      if (tabId != null && portRef.current === port) {
         port.postMessage({ type: 'SIDEPANEL_READY', tabId } satisfies Message);
       }
     });
@@ -331,6 +364,7 @@ export default function App() {
         setDownloadProgress(null);
         rawBlocksRef.current = [];
         setOpenSections(new Set(['main', 'article'] as PageSection[]));
+        itemRefs.current.clear(); // Clear refs to avoid stale references
       }
     });
 
@@ -355,15 +389,15 @@ export default function App() {
 
   // ─── Sidebar ↔ page highlight ────────────────────────────────────────────
   const handleItemMouseEnter = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'HIGHLIGHT_ELEMENT', id } satisfies Message);
+    safeSendMessage({ type: 'HIGHLIGHT_ELEMENT', id } satisfies Message);
   }, []);
 
   const handleItemMouseLeave = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
+    safeSendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
   }, []);
 
   const handleItemClick = useCallback((id: string) => {
-    chrome.runtime.sendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message);
+    safeSendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message);
   }, []);
 
   // ─── Language change handlers ─────────────────────────────────────────────
@@ -381,14 +415,14 @@ export default function App() {
   const handleBlockInteractiveChange = useCallback((enabled: boolean) => {
     setBlockInteractive(enabled);
     saveSettings({ blockInteractive: enabled });
-    chrome.runtime.sendMessage({ type: 'BLOCK_INTERACTIVE_CHANGED', blockInteractive: enabled } satisfies Message);
+    safeSendMessage({ type: 'BLOCK_INTERACTIVE_CHANGED', blockInteractive: enabled } satisfies Message);
   }, []);
 
   // ─── Translation mode toggle ───────────────────────────────────────────────
   const handleTranslationModeChange = useCallback((enabled: boolean) => {
     setTranslationMode(enabled);
     saveSettings({ translationMode: enabled });
-    chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
+    safeSendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
   }, []);
 
   // ─── Font size control ───────────────────────────────────────────────────────
@@ -422,7 +456,8 @@ export default function App() {
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className={styles.app}>
+    <ErrorBoundary>
+      <div className={styles.app}>
       <div className={styles.fixedHeader}>
         <header className={styles.header}>
           <div className={styles.modeToggle}>
@@ -506,7 +541,7 @@ export default function App() {
         )}
 
         {status === 'downloading' && downloadProgress !== null && (
-          <div className={`${styles.statusBar} ${styles.info}`}>
+          <div role="status" aria-live="polite" className={`${styles.statusBar} ${styles.info}`}>
             {downloadProgress >= 1
               ? 'Preparing translator…'
               : `Downloading language model… ${Math.round(downloadProgress * 100)}%`}
@@ -514,19 +549,19 @@ export default function App() {
         )}
 
         {status === 'same-lang' && (
-          <div className={`${styles.statusBar} ${styles.info}`}>
+          <div role="status" aria-live="polite" className={`${styles.statusBar} ${styles.info}`}>
             This page is already in the target language — showing original text.
           </div>
         )}
 
         {status === 'download-required' && (
-          <div className={`${styles.statusBar} ${styles.info}`}>
+          <div role="status" aria-live="polite" className={`${styles.statusBar} ${styles.info}`}>
             {errorMsg || 'A language model needs to be downloaded. Click the translate button to start.'}
           </div>
         )}
 
         {status === 'error' && (
-          <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
+          <div role="status" aria-live="polite" className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
         )}
 
         {status === 'idle' && (
@@ -574,5 +609,6 @@ export default function App() {
         )}
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

@@ -1,4 +1,5 @@
 import type { Message } from '../lib/messages';
+import { isMessage } from '../lib/messages';
 
 const SIDEPANEL_PATH = 'src/sidepanel/index.html';
 
@@ -7,6 +8,23 @@ const openedTabs = new Set<number>();
 
 // Map from tab ID → the sidepanel port monitoring that tab (supports multiple windows)
 const tabPorts = new Map<number, chrome.runtime.Port>();
+
+/**
+ * Safely send a message through a port with error handling.
+ * If the port is disconnected, cleans up the port from tabPorts.
+ */
+function safePostMessage(port: chrome.runtime.Port, tabId: number, message: Message): boolean {
+  try {
+    port.postMessage(message);
+    return true;
+  } catch (error) {
+    console.error(`[background] Failed to send message to sidepanel for tab ${tabId}:`, error);
+    // Port is likely disconnected, clean up
+    tabPorts.delete(tabId);
+    openedTabs.delete(tabId);
+    return false;
+  }
+}
 
 // We handle the action click ourselves to get per-tab, toggle behaviour
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
@@ -33,7 +51,13 @@ chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
 
   // Listen for the sidepanel to send its tab ID
-  port.onMessage.addListener((message: Message) => {
+  port.onMessage.addListener((message: unknown) => {
+    // Validate message before processing
+    if (!isMessage(message)) {
+      console.warn('[background] Received invalid message from sidepanel:', message);
+      return;
+    }
+
     if (message.type === 'SIDEPANEL_READY') {
       const tabId = message.tabId;
       if (tabId == null) return;
@@ -59,13 +83,19 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === 'loading') {
     const port = tabPorts.get(tabId);
     if (port) {
-      port.postMessage({ type: 'PAGE_REFRESHED' } as Message);
+      safePostMessage(port, tabId, { type: 'PAGE_REFRESHED' });
     }
   }
 });
 
 // Relay messages between content script and side panel
-chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  // Validate that message has proper structure
+  if (!isMessage(message)) {
+    console.warn('[background] Received invalid message:', message);
+    return false;
+  }
+
   const senderTabId = sender.tab?.id;
 
   if (message.type === 'EXTRACT_TEXT') {
@@ -77,6 +107,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       }
       chrome.tabs.sendMessage(activeTab.id, message, (response) => {
         if (chrome.runtime.lastError) {
+          console.error('[background] Failed to send EXTRACT_TEXT to content script:', chrome.runtime.lastError.message);
           sendResponse(null);
           return;
         }
@@ -96,7 +127,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     // Only forward to the sidepanel port associated with this specific tab
     if (senderTabId != null) {
       const port = tabPorts.get(senderTabId);
-      if (port) port.postMessage(message);
+      if (port) {
+        safePostMessage(port, senderTabId, message);
+      }
     }
     return false;
   }
@@ -106,7 +139,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
         chrome.tabs.sendMessage(activeTab.id, message, () => {
-          void chrome.runtime.lastError; // acknowledge to suppress unchecked warning
+          if (chrome.runtime.lastError) {
+            console.error('[background] Failed to send message to content script:', chrome.runtime.lastError.message);
+          }
         });
       }
     });
@@ -115,7 +150,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 
   if (senderTabId != null && message.type === 'PAGE_TEXT') {
     const port = tabPorts.get(senderTabId);
-    if (port) port.postMessage(message);
+    if (port) {
+      safePostMessage(port, senderTabId, message);
+    }
   }
 
   return false;

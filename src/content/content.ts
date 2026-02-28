@@ -1,4 +1,5 @@
 import type { Message, PageSection, TextBlock } from '../lib/messages';
+import { DEBOUNCE_MS, HOVER_DEBOUNCE_MS } from '../lib/constants';
 import { getSettings, saveSettings } from '../lib/storage';
 
 // ─── Helper: Safe message sending ─────────────────────────────────────────────
@@ -40,7 +41,6 @@ const SELECTED_CLASS = 'st-selected';
 const FLASH_CLASS = 'st-flash';
 const TRANSLATION_MODE_CLASS = 'st-translation-mode';
 const BLOCK_INTERACTIVE_CLASS = 'st-block-interactive';
-const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -149,6 +149,13 @@ function getElementByStId(id: string): HTMLElement | null {
 
 function isHidden(el: Element): boolean {
   if (!(el instanceof HTMLElement)) return false;
+
+  // Fast checks first (no layout thrashing)
+  if (el.style.display === 'none') return true;
+  if (el.style.visibility === 'hidden') return true;
+  if (el.style.opacity === '0') return true;
+
+  // Only use getComputedStyle as fallback
   const style = window.getComputedStyle(el);
   if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
     return true;
@@ -161,6 +168,24 @@ function isHidden(el: Element): boolean {
     if (pos !== 'fixed' && pos !== 'sticky') return true;
   }
   return false;
+}
+
+/**
+ * Find an element with data-st-id attribute, starting from the target
+ * and walking up the DOM tree if necessary.
+ */
+function findElementWithStId(target: Element): HTMLElement | null {
+  const closest = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+  if (closest) return closest;
+
+  let parent: Element | null = target.parentElement;
+  while (parent && parent !== document.body) {
+    if (parent.hasAttribute(ST_ATTR)) {
+      return parent as HTMLElement;
+    }
+    parent = parent.parentElement;
+  }
+  return null;
 }
 
 function shouldSkip(node: Node): boolean {
@@ -355,26 +380,13 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
 
 let currentHighlightId: string | null = null;
 let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-const HOVER_DEBOUNCE_MS = 300;
 
 function setupEventListeners(): void {
   document.addEventListener('mouseover', (e) => {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
+    const el = findElementWithStId(target);
 
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
@@ -406,19 +418,7 @@ function setupEventListeners(): void {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
+    const el = findElementWithStId(target);
 
     if (!el) return;
 
@@ -444,19 +444,7 @@ function setupEventListeners(): void {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
+    const el = findElementWithStId(target);
 
     if (!el) return;
 
@@ -672,4 +660,21 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
   }
 
   return false;
+});
+
+// ─── Cleanup on page unload ────────────────────────────────────────────────────
+
+window.addEventListener('unload', () => {
+  if (observer) {
+    observer.disconnect();
+    observer = null;
+  }
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (hoverDebounceTimer !== null) {
+    clearTimeout(hoverDebounceTimer);
+    hoverDebounceTimer = null;
+  }
 });

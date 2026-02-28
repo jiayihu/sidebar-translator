@@ -1,4 +1,4 @@
-import { ReactNode } from 'react';
+import { ReactNode, useId } from 'react';
 import styles from './Accordion.module.css';
 
 interface AccordionProps {
@@ -11,6 +11,7 @@ interface AccordionProps {
 
 export function Accordion({ title, count, open, onToggle, children }: AccordionProps) {
   const handleToggle = () => onToggle(!open);
+  const contentId = useId();
 
   return (
     <div className={styles.accordion}>
@@ -18,13 +19,14 @@ export function Accordion({ title, count, open, onToggle, children }: AccordionP
         className={styles.header}
         onClick={handleToggle}
         aria-expanded={open}
+        aria-controls={contentId}
         aria-label={`${title} section, ${count} items, ${open ? 'expanded' : 'collapsed'}`}
       >
         <span className={styles.chevron}>{open ? '▾' : '▸'}</span>
         <span className={styles.title}>{title}</span>
         <span className={styles.count}>{count}</span>
       </button>
-      {open && <div className={styles.content}>{children}</div>}
+      {open && <div id={contentId} className={styles.content}>{children}</div>}
     </div>
   );
 }

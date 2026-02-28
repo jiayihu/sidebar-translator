@@ -117,6 +117,23 @@ export class TranslatorDownloadRequiredError extends Error {
 export class ChromeAITranslator implements ITranslator {
   private translatorCache = new Map<string, Translator>();
   private detectorInstance: LanguageDetector | null = null;
+  private static readonly MAX_CACHE_SIZE = 5;
+
+  /**
+   * Evict the oldest translator from the cache if we've reached max capacity.
+   * This implements a simple LRU (Least Recently Used) eviction policy.
+   */
+  private evictOldestIfNeeded(): void {
+    if (this.translatorCache.size >= ChromeAITranslator.MAX_CACHE_SIZE) {
+      // Remove the first (oldest) entry - Map maintains insertion order
+      const firstKey = this.translatorCache.keys().next().value;
+      if (firstKey) {
+        const oldTranslator = this.translatorCache.get(firstKey);
+        oldTranslator?.destroy();
+        this.translatorCache.delete(firstKey);
+      }
+    }
+  }
 
   /**
    * Check if a translator for the given language pair requires a download.
@@ -283,6 +300,8 @@ export class ChromeAITranslator implements ITranslator {
         );
       }
 
+      // Evict oldest translator if cache is full before adding new entry
+      this.evictOldestIfNeeded();
       this.translatorCache.set(cacheKey, translator);
     }
 
@@ -309,5 +328,23 @@ export class ChromeAITranslator implements ITranslator {
     }
     console.info('[SidebarTranslator] All translations complete');
     return results;
+  }
+
+  /**
+   * Clean up all resources held by this translator instance.
+   * Call this when the translator is no longer needed to free memory.
+   */
+  destroy(): void {
+    // Destroy the detector instance
+    if (this.detectorInstance) {
+      this.detectorInstance.destroy();
+      this.detectorInstance = null;
+    }
+
+    // Destroy all cached translators
+    for (const translator of this.translatorCache.values()) {
+      translator.destroy();
+    }
+    this.translatorCache.clear();
   }
 }
