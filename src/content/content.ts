@@ -31,7 +31,7 @@ const BLOCK_LEVEL_TAGS = new Set([
 
 const SKIP_TAGS = new Set([
   'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'SELECT', 'OPTION',
-  'CODE', 'PRE', 'BUTTON', 'INPUT', 'LABEL', 'SVG', 'MATH',
+  'CODE', 'PRE', 'BUTTON', 'INPUT', 'SVG', 'MATH',
 ]);
 
 const ST_ATTR = 'data-st-id';
@@ -173,14 +173,31 @@ function shouldSkip(node: Node): boolean {
 
 function getBlockParent(node: Node): HTMLElement | null {
   let current: Node | null = node.parentNode;
+
   while (current && current !== document.body) {
     if (current instanceof HTMLElement) {
       const tag = current.tagName;
+
+      // Standard block-level tags
       if (BLOCK_LEVEL_TAGS.has(tag)) return current;
       if (current.getAttribute('role') === 'article') return current;
+
+      // Check if this element is a flex/grid item
+      // This handles inline elements (like span, label) that are direct children
+      // of flex/grid containers and should be treated as separate blocks
+      const parent = current.parentElement;
+      if (parent && parent !== document.body) {
+        const parentStyle = window.getComputedStyle(parent);
+        const parentDisplay = parentStyle.display;
+        if (parentDisplay === 'flex' || parentDisplay === 'grid' ||
+            parentDisplay === 'inline-flex' || parentDisplay === 'inline-grid') {
+          return current;
+        }
+      }
     }
     current = current.parentNode;
   }
+
   return node.parentElement;
 }
 
