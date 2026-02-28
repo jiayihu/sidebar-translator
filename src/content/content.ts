@@ -387,8 +387,14 @@ function setupEventListeners(): void {
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
 
+    // Block the click if blockInteractive is enabled
+    if (blockInteractive) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
     safeSendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
-  });
+  }, true); // Use capture phase to intercept before other handlers
 }
 
 // ─── Highlight Handlers ───────────────────────────────────────────────────────
