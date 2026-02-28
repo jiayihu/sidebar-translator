@@ -74,19 +74,6 @@ function injectStyles(): void {
       cursor: pointer !important;
     }
 
-    /* Block interactive elements in translation mode */
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a *,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] button,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] input,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] select,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] textarea,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [role="button"],
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] label,
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
-      pointer-events: none !important;
-    }
-
     /* Flash animation for selected elements */
     @keyframes st-flash {
       0% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.25); }
@@ -413,12 +400,6 @@ function setupEventListeners(): void {
 
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
-
-    // Block the click when translation mode is active
-    if (translationMode) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
 
     safeSendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
   }, true); // Use capture phase to intercept before other handlers
