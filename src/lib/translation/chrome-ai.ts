@@ -94,7 +94,7 @@ export async function detectPageLanguage(
 }
 
 /** Normalize language code to base form (e.g., 'it-IT' → 'it', 'zh-TW' stays as-is) */
-function normalizeLangCode(code: string): string {
+export function normalizeLangCode(code: string): string {
   // Preserve zh-TW, zh-HK, etc. as they are distinct Chinese variants
   if (code.startsWith('zh-')) return code;
   // For other codes, take only the base language part

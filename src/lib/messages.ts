@@ -17,5 +17,4 @@ export type Message =
   | { type: 'UNHIGHLIGHT_ELEMENT'; id: string }
   | { type: 'SCROLL_TO_ELEMENT'; id: string }
   | { type: 'SET_MODE'; translationMode: boolean }
-  | { type: 'MODE_CHANGED'; translationMode: boolean }
   | { type: 'PAGE_REFRESHED' };

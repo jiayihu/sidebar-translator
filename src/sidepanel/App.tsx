@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSettings, saveSettings } from '../lib/storage';
 import { getTranslator } from '../lib/translation';
-import { detectPageLanguage, TranslatorDownloadRequiredError } from '../lib/translation/chrome-ai';
+import { detectPageLanguage, normalizeLangCode, TranslatorDownloadRequiredError } from '../lib/translation/chrome-ai';
 import type { Message, PageSection, TextBlock } from '../lib/messages';
 import { LanguagePicker } from './components/LanguagePicker';
 import { TranslationList } from './components/TranslationList';
@@ -17,7 +17,7 @@ function scrollIntoViewIfNeeded(el: HTMLDivElement) {
 }
 
 function langMatches(a: string, b: string): boolean {
-  return a.toLowerCase().split('-')[0] === b.toLowerCase().split('-')[0];
+  return normalizeLangCode(a) === normalizeLangCode(b);
 }
 
 async function translateRaw(
@@ -220,6 +220,15 @@ export default function App() {
     const port = chrome.runtime.connect({ name: 'sidepanel' });
     portRef.current = port;
 
+    /** Ensure the accordion section for a block is open, scheduling a scroll if needed. */
+    function ensureSectionOpen(id: string) {
+      const section = blockToSectionRef.current.get(id);
+      if (section && !openSectionsRef.current.has(section)) {
+        setOpenSections((prev) => new Set(prev).add(section));
+        setPendingScrollId(id);
+      }
+    }
+
     port.onMessage.addListener((message: Message) => {
       if (message.type === 'ELEMENT_HOVERED') {
         if (message.id === null) {
@@ -230,12 +239,7 @@ export default function App() {
           if (el) {
             scrollIntoViewIfNeeded(el);
           } else {
-            // Element might be in a collapsed accordion - open its section
-            const section = blockToSectionRef.current.get(message.id);
-            if (section && !openSectionsRef.current.has(section)) {
-              setOpenSections((prev) => new Set(prev).add(section));
-              setPendingScrollId(message.id);
-            }
+            ensureSectionOpen(message.id);
           }
         }
       }
@@ -246,12 +250,7 @@ export default function App() {
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         } else {
-          // Element might be in a collapsed accordion - open its section
-          const section = blockToSectionRef.current.get(message.id);
-          if (section && !openSectionsRef.current.has(section)) {
-            setOpenSections((prev) => new Set(prev).add(section));
-            setPendingScrollId(message.id);
-          }
+          ensureSectionOpen(message.id);
         }
       }
 
@@ -299,10 +298,6 @@ export default function App() {
               console.error('[SidebarTranslator] Failed to re-translate block', id, err);
             });
         }
-      }
-
-      if (message.type === 'MODE_CHANGED') {
-        setTranslationMode(message.translationMode);
       }
 
       if (message.type === 'PAGE_REFRESHED') {

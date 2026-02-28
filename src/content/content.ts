@@ -1,5 +1,5 @@
 import type { Message, PageSection, TextBlock } from '../lib/messages';
-import { getSettings, saveSettings } from '../lib/storage';
+import { getSettings } from '../lib/storage';
 
 // ─── Helper: Safe message sending ─────────────────────────────────────────────
 
@@ -95,17 +95,11 @@ function setTranslationMode(enabled: boolean): void {
   translationMode = enabled;
   updateModeUI();
 
-  // Persist the setting
-  saveSettings({ translationMode: enabled });
-
   // Clear any existing highlights when switching to read mode
   if (!enabled && currentHighlightedEl) {
     currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
     currentHighlightedEl = null;
   }
-
-  // Notify sidebar of mode change
-  safeSendMessage({ type: 'MODE_CHANGED', translationMode: enabled } satisfies Message);
 }
 
 function updateModeUI(): void {
@@ -291,6 +285,10 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
+function findStElement(target: Element): HTMLElement | null {
+  return target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+}
+
 let currentHighlightId: string | null = null;
 let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const HOVER_DEBOUNCE_MS = 300;
@@ -299,21 +297,7 @@ function setupEventListeners(): void {
   document.addEventListener('mouseover', (e) => {
     if (!translationMode) return;
 
-    const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
-
+    const el = findStElement(e.target as Element);
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
     if (id === currentHighlightId) return;
@@ -343,21 +327,7 @@ function setupEventListeners(): void {
   document.addEventListener('mouseout', (e) => {
     if (!translationMode) return;
 
-    const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
-
+    const el = findStElement(e.target as Element);
     if (!el) return;
 
     const relatedTarget = e.relatedTarget as Element | null;
@@ -381,21 +351,7 @@ function setupEventListeners(): void {
   document.addEventListener('click', (e) => {
     if (!translationMode) return;
 
-    const target = e.target as Element;
-    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-
-    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
-    if (!el) {
-      let parent: Element | null = target.parentElement;
-      while (parent && parent !== document.body) {
-        if (parent.hasAttribute(ST_ATTR)) {
-          el = parent as HTMLElement;
-          break;
-        }
-        parent = parent.parentElement;
-      }
-    }
-
+    const el = findStElement(e.target as Element);
     if (!el) return;
 
     const id = el.getAttribute(ST_ATTR);
@@ -561,8 +517,6 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
         translationMode = settings.translationMode;
         updateModeUI();
       });
-
-      updateModeUI(); // Apply initial translation mode state to body class
     }
 
     const blocks = extractTextBlocks();

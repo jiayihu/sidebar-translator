@@ -51,6 +51,21 @@ export function TranslationList({
     return groups;
   }, [blocks]);
 
+  const renderItem = (block: TranslationBlock) => (
+    <TranslationItem
+      key={block.id}
+      ref={(el) => {
+        if (el) itemRefs.current.set(block.id, el);
+        else itemRefs.current.delete(block.id);
+      }}
+      block={block}
+      isActive={activeId === block.id}
+      onMouseEnter={onItemMouseEnter}
+      onMouseLeave={onItemMouseLeave}
+      onClick={onItemClick}
+    />
+  );
+
   if (blocks.length === 0) {
     if (showEmpty) {
       return (
@@ -80,20 +95,7 @@ export function TranslationList({
     const sectionBlocks = Array.from(groupedBlocks.values())[0];
     return (
       <div className={styles.list}>
-        {sectionBlocks.map((block) => (
-          <TranslationItem
-            key={block.id}
-            ref={(el) => {
-              if (el) itemRefs.current.set(block.id, el);
-              else itemRefs.current.delete(block.id);
-            }}
-            block={block}
-            isActive={activeId === block.id}
-            onMouseEnter={onItemMouseEnter}
-            onMouseLeave={onItemMouseLeave}
-            onClick={onItemClick}
-          />
-        ))}
+        {sectionBlocks.map(renderItem)}
       </div>
     );
   }
@@ -112,20 +114,7 @@ export function TranslationList({
             open={openSections.has(section)}
             onToggle={(isOpen) => onSectionToggle(section, isOpen)}
           >
-            {sectionBlocks.map((block) => (
-              <TranslationItem
-                key={block.id}
-                ref={(el) => {
-                  if (el) itemRefs.current.set(block.id, el);
-                  else itemRefs.current.delete(block.id);
-                }}
-                block={block}
-                isActive={activeId === block.id}
-                    onMouseEnter={onItemMouseEnter}
-                onMouseLeave={onItemMouseLeave}
-                onClick={onItemClick}
-              />
-            ))}
+            {sectionBlocks.map(renderItem)}
           </Accordion>
         );
       })}

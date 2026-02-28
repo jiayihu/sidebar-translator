@@ -90,8 +90,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'ELEMENT_HOVERED' ||
     message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
-    message.type === 'TEXT_UPDATED' ||
-    message.type === 'MODE_CHANGED'
+    message.type === 'TEXT_UPDATED'
   ) {
     // Only forward to the sidepanel port associated with this specific tab
     if (senderTabId != null) {
@@ -101,7 +100,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT' || message.type === 'BLOCK_INTERACTIVE_CHANGED' || message.type === 'SET_MODE') {
+  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT' || message.type === 'SET_MODE') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
