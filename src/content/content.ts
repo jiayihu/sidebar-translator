@@ -62,12 +62,12 @@ function injectStyles(): void {
     /* Highlight styles */
     body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${HIGHLIGHT_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.08) !important;
+      outline-offset: 2px;
       border-radius: 2px;
     }
     body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${SELECTED_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.18) !important;
+      outline-offset: 2px;
       border-radius: 2px;
     }
 
@@ -327,11 +327,15 @@ function setupEventListeners(): void {
     const target = e.target as Element;
     let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
 
-    // If element doesn't have data-st-id, check if it's inside a block that does
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
     if (!el) {
-      const blockParent = getBlockParent(target);
-      if (blockParent?.hasAttribute(ST_ATTR)) {
-        el = blockParent;
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
       }
     }
 
@@ -367,11 +371,15 @@ function setupEventListeners(): void {
     const target = e.target as Element;
     let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
 
-    // If element doesn't have data-st-id, check if it's inside a block that does
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
     if (!el) {
-      const blockParent = getBlockParent(target);
-      if (blockParent?.hasAttribute(ST_ATTR)) {
-        el = blockParent;
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
       }
     }
 
@@ -401,11 +409,15 @@ function setupEventListeners(): void {
     const target = e.target as Element;
     let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
 
-    // If element doesn't have data-st-id, check if it's inside a block that does
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
     if (!el) {
-      const blockParent = getBlockParent(target);
-      if (blockParent?.hasAttribute(ST_ATTR)) {
-        el = blockParent;
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
       }
     }
 
