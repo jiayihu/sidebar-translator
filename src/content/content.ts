@@ -39,7 +39,6 @@ const HIGHLIGHT_CLASS = 'st-highlight';
 const SELECTED_CLASS = 'st-selected';
 const FLASH_CLASS = 'st-flash';
 const TRANSLATION_MODE_CLASS = 'st-translation-mode';
-const BLOCK_INTERACTIVE_CLASS = 'st-block-interactive';
 const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -50,7 +49,6 @@ let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
 let activated = false; // true after first EXTRACT_TEXT
 let translationMode = true; // Default: translation mode active
-let blockInteractive = false; // Default: don't block interactive elements
 
 // ─── Style injection ──────────────────────────────────────────────────────────
 
@@ -76,16 +74,16 @@ function injectStyles(): void {
       cursor: pointer !important;
     }
 
-    /* Block interactive elements when enabled */
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a *,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] button,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] input,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] select,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] textarea,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [role="button"],
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] label,
-    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
+    /* Block interactive elements in translation mode */
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] a *,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] button,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] input,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] select,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] textarea,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [role="button"],
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] label,
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
       pointer-events: none !important;
     }
 
@@ -125,16 +123,6 @@ function setTranslationMode(enabled: boolean): void {
 
 function updateModeUI(): void {
   document.body.classList.toggle(TRANSLATION_MODE_CLASS, translationMode);
-  updateBlockInteractiveUI();
-}
-
-function updateBlockInteractiveUI(): void {
-  document.body.classList.toggle(BLOCK_INTERACTIVE_CLASS, blockInteractive && translationMode);
-}
-
-function setBlockInteractive(enabled: boolean): void {
-  blockInteractive = enabled;
-  updateBlockInteractiveUI();
 }
 
 // ─── DOM Utilities ────────────────────────────────────────────────────────────
@@ -426,8 +414,8 @@ function setupEventListeners(): void {
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
 
-    // Block the click if blockInteractive is enabled
-    if (blockInteractive) {
+    // Block the click when translation mode is active
+    if (translationMode) {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -587,10 +575,9 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       injectStyles();
       setupEventListeners();
 
-      // Load persisted settings for translation mode and block interactive
+      // Load persisted settings for translation mode
       getSettings().then((settings) => {
         translationMode = settings.translationMode;
-        blockInteractive = settings.blockInteractive;
         updateModeUI();
       });
 
@@ -626,11 +613,6 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     if (translationMode) {
       scrollToElement(message.id);
     }
-    return false;
-  }
-
-  if (message.type === 'BLOCK_INTERACTIVE_CHANGED') {
-    setBlockInteractive(message.blockInteractive);
     return false;
   }
 

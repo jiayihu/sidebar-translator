@@ -35,42 +35,58 @@
   gap: 12px;
 }
 
-/* ── Mode Toggle ───────────────────────────────────────────────────── */
+/* ── Mode Toggle (switch) ──────────────────────────────────────────── */
 
 .modeToggle {
   display: flex;
-  background: var(--surface);
-  border-radius: var(--radius-pill);
-  padding: 3px;
-  border: 1px solid var(--border);
-  flex: 1;
-  max-width: 200px;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
 }
 
-.modeBtn {
-  flex: 1;
-  padding: 6px 12px;
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-pill);
-  cursor: pointer;
+.modeLabel {
   font-size: 12px;
   font-weight: 600;
   color: var(--ink-muted);
-  transition: all 0.15s ease;
 }
 
-.modeBtn:hover:not(.modeBtnActive) {
-  color: var(--ink-mid);
+.modeCheckbox {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
 }
 
-.modeBtnActive {
+.modeSwitch {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  background: var(--border-mid, #c4c4c4);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.modeSwitch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.modeCheckbox:checked + .modeSwitch {
   background: var(--accent);
-  color: #fff;
 }
 
-.modeBtnActive:hover {
-  background: var(--accent-dark, #4338ca);
+.modeCheckbox:checked + .modeSwitch::after {
+  transform: translateX(14px);
 }
 
 /* ── Refresh button ─────────────────────────────────────────────────── */
@@ -329,31 +345,6 @@
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-}
-
-.checkboxLabel {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--ink-muted);
-  cursor: pointer;
-}
-
-.checkboxLabel input[type="checkbox"] {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--accent);
-}
-
-.checkboxLabel span {
-  user-select: none;
-}
-
-.checkboxLabel:hover {
-  color: var(--ink-mid);
 }
 
 .fontSizeControl {

@@ -12,18 +12,17 @@ export interface TranslationBlock {
 interface TranslationItemProps {
   block: TranslationBlock;
   isActive: boolean;
-  isFlashing: boolean;
   onMouseEnter: (id: string) => void;
   onMouseLeave: (id: string) => void;
   onClick: (id: string) => void;
 }
 
 export const TranslationItem = forwardRef<HTMLDivElement, TranslationItemProps>(
-  ({ block, isActive, isFlashing, onMouseEnter, onMouseLeave, onClick }, ref) => {
+  ({ block, isActive, onMouseEnter, onMouseLeave, onClick }, ref) => {
     return (
       <div
         ref={ref}
-        className={`${styles.item} ${isActive ? styles.active : ''} ${isFlashing ? styles.flash : ''}`}
+        className={`${styles.item} ${isActive ? styles.active : ''}`}
         onMouseEnter={() => onMouseEnter(block.id)}
         onMouseLeave={() => onMouseLeave(block.id)}
         onClick={() => onClick(block.id)}

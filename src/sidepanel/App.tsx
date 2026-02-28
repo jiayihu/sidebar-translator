@@ -48,13 +48,11 @@ const SKELETON_COUNT = 5;
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [flashingId, setFlashingId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
-  const [blockInteractive, setBlockInteractive] = useState(false);
   const [translationMode, setTranslationMode] = useState(true);
   const [fontSize, setFontSize] = useState(14);
   // Initialize with default open sections (main and article)
@@ -89,8 +87,6 @@ export default function App() {
       const el = itemRefs.current.get(pendingScrollId);
       if (el) {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setFlashingId(pendingScrollId);
-        setTimeout(() => setFlashingId(null), 300);
         setPendingScrollId(null);
         return; // Element found, no need for timeout
       }
@@ -214,7 +210,6 @@ export default function App() {
     getSettings().then((s) => {
       setSourceLang(s.sourceLanguage);
       setTargetLang(s.targetLanguage);
-      setBlockInteractive(s.blockInteractive);
       setFontSize(s.fontSize);
       setTranslationMode(s.translationMode);
     });
@@ -250,9 +245,6 @@ export default function App() {
         const el = itemRefs.current.get(message.id);
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Trigger flash animation
-          setFlashingId(message.id);
-          setTimeout(() => setFlashingId(null), 300);
         } else {
           // Element might be in a collapsed accordion - open its section
           const section = blockToSectionRef.current.get(message.id);
@@ -317,7 +309,6 @@ export default function App() {
         // Reset state when page is refreshed
         setBlocks([]);
         setActiveId(null);
-        setFlashingId(null);
         setStatus('idle');
         setErrorMsg('');
         setDownloadProgress(null);
@@ -369,13 +360,6 @@ export default function App() {
     saveSettings({ targetLanguage: lang });
   }, []);
 
-  // ─── Block interactive toggle ───────────────────────────────────────────────
-  const handleBlockInteractiveChange = useCallback((enabled: boolean) => {
-    setBlockInteractive(enabled);
-    saveSettings({ blockInteractive: enabled });
-    chrome.runtime.sendMessage({ type: 'BLOCK_INTERACTIVE_CHANGED', blockInteractive: enabled } satisfies Message);
-  }, []);
-
   // ─── Translation mode toggle ───────────────────────────────────────────────
   const handleTranslationModeChange = useCallback((enabled: boolean) => {
     setTranslationMode(enabled);
@@ -417,22 +401,16 @@ export default function App() {
     <div className={styles.app}>
       <div className={styles.fixedHeader}>
         <header className={styles.header}>
-          <div className={styles.modeToggle}>
-            <button
-              className={`${styles.modeBtn} ${!translationMode ? styles.modeBtnActive : ''}`}
-              onClick={() => handleTranslationModeChange(false)}
-              title="Read mode"
-            >
-              Read
-            </button>
-            <button
-              className={`${styles.modeBtn} ${translationMode ? styles.modeBtnActive : ''}`}
-              onClick={() => handleTranslationModeChange(true)}
-              title="Translate mode"
-            >
-              Translate
-            </button>
-          </div>
+          <label className={styles.modeToggle} title="Enable page interactions (hover highlights, click to locate)">
+            <span className={styles.modeLabel}>Interactions</span>
+            <input
+              type="checkbox"
+              className={styles.modeCheckbox}
+              checked={translationMode}
+              onChange={(e) => handleTranslationModeChange(e.target.checked)}
+            />
+            <span className={styles.modeSwitch} />
+          </label>
           <button
             className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
             onClick={handleRefresh}
@@ -456,14 +434,7 @@ export default function App() {
         />
 
         <div className={styles.settingsRow}>
-          <label className={styles.checkboxLabel}>
-            <input
-              type="checkbox"
-              checked={blockInteractive}
-              onChange={(e) => handleBlockInteractiveChange(e.target.checked)}
-            />
-            <span>Block clicks</span>
-          </label>
+          <div />
           <div className={styles.fontSizeControl}>
             <button
               className={styles.fontSizeBtn}
@@ -553,7 +524,6 @@ export default function App() {
             <TranslationList
               blocks={blocks}
               activeId={activeId}
-              flashingId={flashingId}
               itemRefs={itemRefs}
               openSections={openSections}
               onSectionToggle={handleSectionToggle}

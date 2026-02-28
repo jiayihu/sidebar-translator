@@ -18,5 +18,4 @@ export type Message =
   | { type: 'SCROLL_TO_ELEMENT'; id: string }
   | { type: 'SET_MODE'; translationMode: boolean }
   | { type: 'MODE_CHANGED'; translationMode: boolean }
-  | { type: 'BLOCK_INTERACTIVE_CHANGED'; blockInteractive: boolean }
   | { type: 'PAGE_REFRESHED' };

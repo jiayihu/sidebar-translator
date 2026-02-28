@@ -1,7 +1,6 @@
 export interface Settings {
   targetLanguage: string;
   sourceLanguage: string;
-  blockInteractive: boolean;
   fontSize: number;
   translationMode: boolean;
 }
@@ -9,7 +8,6 @@ export interface Settings {
 const DEFAULTS: Settings = {
   targetLanguage: 'en',
   sourceLanguage: 'auto',
-  blockInteractive: false,
   fontSize: 14,
   translationMode: true,
 };

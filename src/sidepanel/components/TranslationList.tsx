@@ -21,7 +21,6 @@ const SECTION_ORDER: PageSection[] = ['header', 'nav', 'main', 'article', 'secti
 interface TranslationListProps {
   blocks: TranslationBlock[];
   activeId: string | null;
-  flashingId: string | null;
   itemRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   openSections: Set<PageSection>;
   onSectionToggle: (section: PageSection, isOpen: boolean) => void;
@@ -34,7 +33,6 @@ interface TranslationListProps {
 export function TranslationList({
   blocks,
   activeId,
-  flashingId,
   itemRefs,
   openSections,
   onSectionToggle,
@@ -91,7 +89,6 @@ export function TranslationList({
             }}
             block={block}
             isActive={activeId === block.id}
-            isFlashing={flashingId === block.id}
             onMouseEnter={onItemMouseEnter}
             onMouseLeave={onItemMouseLeave}
             onClick={onItemClick}
@@ -124,8 +121,7 @@ export function TranslationList({
                 }}
                 block={block}
                 isActive={activeId === block.id}
-                isFlashing={flashingId === block.id}
-                onMouseEnter={onItemMouseEnter}
+                    onMouseEnter={onItemMouseEnter}
                 onMouseLeave={onItemMouseLeave}
                 onClick={onItemClick}
               />
