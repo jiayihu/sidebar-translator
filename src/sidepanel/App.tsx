@@ -244,16 +244,6 @@ export default function App() {
         }
       }
 
-      if (message.type === 'ELEMENT_CLICKED') {
-        setActiveId(message.id);
-        const el = itemRefs.current.get(message.id);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        } else {
-          ensureSectionOpen(message.id);
-        }
-      }
-
       if (message.type === 'NEW_TEXT_BLOCKS') {
         const raw = message.blocks;
         rawBlocksRef.current = [...rawBlocksRef.current, ...raw];

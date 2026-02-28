@@ -88,7 +88,6 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 
   if (
     message.type === 'ELEMENT_HOVERED' ||
-    message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
     message.type === 'TEXT_UPDATED'
   ) {

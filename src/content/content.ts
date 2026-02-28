@@ -36,7 +36,6 @@ const SKIP_TAGS = new Set([
 
 const ST_ATTR = 'data-st-id';
 const HIGHLIGHT_CLASS = 'st-highlight';
-const SELECTED_CLASS = 'st-selected';
 const FLASH_CLASS = 'st-flash';
 const TRANSLATION_MODE_CLASS = 'st-translation-mode';
 const DEBOUNCE_MS = 400;
@@ -63,17 +62,6 @@ function injectStyles(): void {
       outline-offset: 2px;
       border-radius: 2px;
     }
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${SELECTED_CLASS} {
-      outline: 2px solid #4f46e5 !important;
-      outline-offset: 2px;
-      border-radius: 2px;
-    }
-
-    /* Cursor pointer on blocks in translation mode */
-    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] {
-      cursor: pointer !important;
-    }
-
     /* Flash animation for selected elements */
     @keyframes st-flash {
       0% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.25); }
@@ -348,17 +336,6 @@ function setupEventListeners(): void {
     }
   });
 
-  document.addEventListener('click', (e) => {
-    if (!translationMode) return;
-
-    const el = findStElement(e.target as Element);
-    if (!el) return;
-
-    const id = el.getAttribute(ST_ATTR);
-    if (!id) return;
-
-    safeSendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
-  }, true); // Use capture phase to intercept before other handlers
 }
 
 // ─── Highlight Handlers ───────────────────────────────────────────────────────
