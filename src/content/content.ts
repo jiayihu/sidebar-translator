@@ -325,7 +325,16 @@ function setupEventListeners(): void {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, check if it's inside a block that does
+    if (!el) {
+      const blockParent = getBlockParent(target);
+      if (blockParent?.hasAttribute(ST_ATTR)) {
+        el = blockParent;
+      }
+    }
+
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
     if (id === currentHighlightId) return;
@@ -356,7 +365,16 @@ function setupEventListeners(): void {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, check if it's inside a block that does
+    if (!el) {
+      const blockParent = getBlockParent(target);
+      if (blockParent?.hasAttribute(ST_ATTR)) {
+        el = blockParent;
+      }
+    }
+
     if (!el) return;
 
     const relatedTarget = e.relatedTarget as Element | null;
@@ -381,7 +399,16 @@ function setupEventListeners(): void {
     if (!translationMode) return;
 
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, check if it's inside a block that does
+    if (!el) {
+      const blockParent = getBlockParent(target);
+      if (blockParent?.hasAttribute(ST_ATTR)) {
+        el = blockParent;
+      }
+    }
+
     if (!el) return;
 
     const id = el.getAttribute(ST_ATTR);
