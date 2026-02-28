@@ -548,9 +548,10 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       injectStyles();
       setupEventListeners();
 
-      // Load persisted settings for translation mode
+      // Load persisted settings for translation mode and block interactive
       getSettings().then((settings) => {
         translationMode = settings.translationMode;
+        blockInteractive = settings.blockInteractive;
         updateModeUI();
       });
 
