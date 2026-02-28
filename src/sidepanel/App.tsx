@@ -225,6 +225,14 @@ export default function App() {
     const port = chrome.runtime.connect({ name: 'sidepanel' });
     portRef.current = port;
 
+    // Send the tab ID to the background script so it knows which tab this sidepanel is attached to
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tabId = tabs[0]?.id;
+      if (tabId != null) {
+        port.postMessage({ type: 'SIDEPANEL_READY', tabId } satisfies Message);
+      }
+    });
+
     port.onMessage.addListener((message: Message) => {
       if (message.type === 'ELEMENT_HOVERED') {
         if (message.id === null) {

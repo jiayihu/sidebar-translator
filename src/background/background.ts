@@ -32,19 +32,19 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
 
-  // Capture the active tab at connect time. When the port later disconnects
-  // (user pressed X to close the panel), remove the tab from openedTabs so
-  // the next action click re-opens rather than double-toggling to close.
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tabId = tabs[0]?.id;
-    if (tabId == null) return;
+  // Listen for the sidepanel to send its tab ID
+  port.onMessage.addListener((message: Message) => {
+    if (message.type === 'SIDEPANEL_READY') {
+      const tabId = message.tabId;
+      if (tabId == null) return;
 
-    tabPorts.set(tabId, port);
+      tabPorts.set(tabId, port);
 
-    port.onDisconnect.addListener(() => {
-      tabPorts.delete(tabId);
-      openedTabs.delete(tabId);
-    });
+      port.onDisconnect.addListener(() => {
+        tabPorts.delete(tabId);
+        openedTabs.delete(tabId);
+      });
+    }
   });
 });
 

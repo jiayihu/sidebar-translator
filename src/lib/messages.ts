@@ -19,4 +19,5 @@ export type Message =
   | { type: 'SET_MODE'; translationMode: boolean }
   | { type: 'MODE_CHANGED'; translationMode: boolean }
   | { type: 'BLOCK_INTERACTIVE_CHANGED'; blockInteractive: boolean }
-  | { type: 'PAGE_REFRESHED' };
+  | { type: 'PAGE_REFRESHED' }
+  | { type: 'SIDEPANEL_READY'; tabId: number };
