@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getSettings, saveSettings } from '../lib/storage';
 import { getTranslator } from '../lib/translation';
-import { detectPageLanguage } from '../lib/translation/chrome-ai';
-import type { Message, TextBlock } from '../lib/messages';
+import { detectPageLanguage, TranslatorDownloadRequiredError } from '../lib/translation/chrome-ai';
+import type { Message, PageSection, TextBlock } from '../lib/messages';
 import { LanguagePicker } from './components/LanguagePicker';
 import { TranslationList } from './components/TranslationList';
 import type { TranslationBlock } from './components/TranslationItem';
 import styles from './App.module.css';
 
-type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error';
+type Status = 'idle' | 'extracting' | 'downloading' | 'translating' | 'ready' | 'same-lang' | 'error' | 'download-required';
 
 function scrollIntoViewIfNeeded(el: HTMLDivElement) {
   const rect = el.getBoundingClientRect();
@@ -25,19 +25,21 @@ async function translateRaw(
   sourceLang: string,
   targetLang: string,
   onDownloadProgress?: (progress: number) => void,
+  hasUserGesture: boolean = false,
 ): Promise<TranslationBlock[]> {
   // Same language on both sides — return originals without hitting any API
   if (sourceLang !== 'auto' && sourceLang === targetLang) {
-    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text }));
+    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section }));
   }
 
   const translator = await getTranslator(sourceLang);
   const texts = rawBlocks.map((b) => b.text);
-  const translated = await translator.translate(texts, sourceLang, targetLang, onDownloadProgress);
+  const translated = await translator.translate(texts, sourceLang, targetLang, onDownloadProgress, hasUserGesture);
   return rawBlocks.map((b, i) => ({
     id: b.id,
     original: b.text,
     translated: translated[i] ?? b.text,
+    section: b.section,
   }));
 }
 
@@ -46,20 +48,70 @@ const SKELETON_COUNT = 5;
 export default function App() {
   const [blocks, setBlocks] = useState<TranslationBlock[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [flashingId, setFlashingId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
+  const [blockInteractive, setBlockInteractive] = useState(false);
+  const [translationMode, setTranslationMode] = useState(true);
+  const [fontSize, setFontSize] = useState(14);
+  // Initialize with default open sections (main and article)
+  const [openSections, setOpenSections] = useState<Set<PageSection>>(() => {
+    return new Set(['main', 'article'] as PageSection[]);
+  });
+  // Track elements that need scrolling after their section opens
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
 
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const portRef = useRef<chrome.runtime.Port | null>(null);
+
+  // Map block IDs to their sections for quick lookup
+  const blockToSection = useMemo(() => {
+    const map = new Map<string, PageSection>();
+    for (const block of blocks) {
+      map.set(block.id, block.section);
+    }
+    return map;
+  }, [blocks]);
+
+  // Refs for accessing current values in port message handler
+  const blockToSectionRef = useRef(blockToSection);
+  const openSectionsRef = useRef(openSections);
+  useEffect(() => { blockToSectionRef.current = blockToSection; }, [blockToSection]);
+  useEffect(() => { openSectionsRef.current = openSections; }, [openSections]);
+
+  // ─── Scroll to pending element after section opens ───────────────────────────
+  // This effect runs after React completes the render, ensuring the element is visible
+  useEffect(() => {
+    if (pendingScrollId) {
+      const el = itemRefs.current.get(pendingScrollId);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setFlashingId(pendingScrollId);
+        setTimeout(() => setFlashingId(null), 300);
+        setPendingScrollId(null);
+        return; // Element found, no need for timeout
+      }
+      // If element still not found after section opens, clear pending after timeout
+      // This prevents stale pending scrolls from blocking future ones
+      const timeout = setTimeout(() => setPendingScrollId(null), 1000);
+      return () => clearTimeout(timeout);
+    }
+  }, [openSections, pendingScrollId]);
+
   // Store raw blocks so language changes can re-translate without re-extracting
   const rawBlocksRef = useRef<TextBlock[]>([]);
   // <html lang> from the last extraction, used as fallback for language detection
   const pageLangRef = useRef<string | undefined>(undefined);
   // Track whether initial extraction has run
   const initializedRef = useRef(false);
+  // Refs so the port message handler always sees current language values
+  const sourceLangRef = useRef(sourceLang);
+  const targetLangRef = useRef(targetLang);
+  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
+  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
 
   // ─── Download progress callback for model downloads ─────────────────────
   const handleDownloadProgress = useCallback((progress: number) => {
@@ -79,14 +131,20 @@ export default function App() {
     try {
       const detected = await detectPageLanguage(raw, pageLangRef.current);
       if (detected && langMatches(detected, tgt)) {
-        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
         setStatus('same-lang');
         return;
       }
-      const translated = await translateRaw(raw, src, tgt, handleDownloadProgress);
+      const translated = await translateRaw(raw, src, tgt, handleDownloadProgress, false);
       setBlocks(translated);
       setStatus('ready');
     } catch (err) {
+      if (err instanceof TranslatorDownloadRequiredError) {
+        // Model needs download - ask user to click translate button
+        setErrorMsg(err.message);
+        setStatus('download-required');
+        return;
+      }
       console.error('[SidebarTranslator] Retranslation failed', err);
       setErrorMsg(err instanceof Error ? err.message : String(err));
       setStatus('error');
@@ -124,16 +182,22 @@ export default function App() {
 
         const detected = await detectPageLanguage(rawBlocks, response.pageLang);
         if (detected && langMatches(detected, tgt)) {
-          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text })));
+          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
           setStatus('same-lang');
           return;
         }
 
         setStatus('translating');
-        const translated = await translateRaw(rawBlocks, src, tgt, handleDownloadProgress);
+        const translated = await translateRaw(rawBlocks, src, tgt, handleDownloadProgress, true);
         setBlocks(translated);
         setStatus('ready');
       } catch (err) {
+        if (err instanceof TranslatorDownloadRequiredError) {
+          // This shouldn't happen since we pass hasUserGesture=true, but handle it just in case
+          setErrorMsg(err.message);
+          setStatus('download-required');
+          return;
+        }
         console.error('[SidebarTranslator] Extract/translate failed', err);
         setErrorMsg(err instanceof Error ? err.message : String(err));
         setStatus('error');
@@ -150,6 +214,9 @@ export default function App() {
     getSettings().then((s) => {
       setSourceLang(s.sourceLanguage);
       setTargetLang(s.targetLanguage);
+      setBlockInteractive(s.blockInteractive);
+      setFontSize(s.fontSize);
+      setTranslationMode(s.translationMode);
     });
   }, []);
 
@@ -158,15 +225,30 @@ export default function App() {
     const port = chrome.runtime.connect({ name: 'sidepanel' });
     portRef.current = port;
 
+    // Send the tab ID to the background script so it knows which tab this sidepanel is attached to
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tabId = tabs[0]?.id;
+      if (tabId != null) {
+        port.postMessage({ type: 'SIDEPANEL_READY', tabId } satisfies Message);
+      }
+    });
+
     port.onMessage.addListener((message: Message) => {
       if (message.type === 'ELEMENT_HOVERED') {
         if (message.id === null) {
           setActiveId(null);
         } else {
+          setActiveId(message.id);
           const el = itemRefs.current.get(message.id);
           if (el) {
-            setActiveId(message.id);
             scrollIntoViewIfNeeded(el);
+          } else {
+            // Element might be in a collapsed accordion - open its section
+            const section = blockToSectionRef.current.get(message.id);
+            if (section && !openSectionsRef.current.has(section)) {
+              setOpenSections((prev) => new Set(prev).add(section));
+              setPendingScrollId(message.id);
+            }
           }
         }
       }
@@ -174,7 +256,19 @@ export default function App() {
       if (message.type === 'ELEMENT_CLICKED') {
         setActiveId(message.id);
         const el = itemRefs.current.get(message.id);
-        el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Trigger flash animation
+          setFlashingId(message.id);
+          setTimeout(() => setFlashingId(null), 300);
+        } else {
+          // Element might be in a collapsed accordion - open its section
+          const section = blockToSectionRef.current.get(message.id);
+          if (section && !openSectionsRef.current.has(section)) {
+            setOpenSections((prev) => new Set(prev).add(section));
+            setPendingScrollId(message.id);
+          }
+        }
       }
 
       if (message.type === 'NEW_TEXT_BLOCKS') {
@@ -182,7 +276,7 @@ export default function App() {
         rawBlocksRef.current = [...rawBlocksRef.current, ...raw];
         const src = sourceLangRef.current;
         const tgt = targetLangRef.current;
-        translateRaw(raw, src, tgt)
+        translateRaw(raw, src, tgt, undefined, false)
           .then((newBlocks) => {
             setBlocks((prev) => {
               const existingIds = new Set(prev.map((b) => b.id));
@@ -190,24 +284,53 @@ export default function App() {
               return toAdd.length ? [...prev, ...toAdd] : prev;
             });
           })
-          .catch((err) => console.error('[SidebarTranslator] Failed to translate new blocks', err));
+          .catch((err) => {
+            if (err instanceof TranslatorDownloadRequiredError) {
+              // Silently ignore - user can click translate to download
+              return;
+            }
+            console.error('[SidebarTranslator] Failed to translate new blocks', err);
+          });
       }
 
       if (message.type === 'TEXT_UPDATED') {
         const { id, text } = message;
+        const existingBlock = rawBlocksRef.current.find((b) => b.id === id);
         rawBlocksRef.current = rawBlocksRef.current.map((b) =>
           b.id === id ? { ...b, text } : b,
         );
         const src = sourceLangRef.current;
         const tgt = targetLangRef.current;
-        translateRaw([{ id, text }], src, tgt)
-          .then(([updated]) => {
-            if (!updated) return;
-            setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)));
-          })
-          .catch((err) =>
-            console.error('[SidebarTranslator] Failed to re-translate block', id, err),
-          );
+        if (existingBlock) {
+          translateRaw([{ ...existingBlock, text }], src, tgt, undefined, false)
+            .then(([updated]) => {
+              if (!updated) return;
+              setBlocks((prev) => prev.map((b) => (b.id === id ? updated : b)));
+            })
+            .catch((err) => {
+              if (err instanceof TranslatorDownloadRequiredError) {
+                // Silently ignore - user can click translate to download
+                return;
+              }
+              console.error('[SidebarTranslator] Failed to re-translate block', id, err);
+            });
+        }
+      }
+
+      if (message.type === 'MODE_CHANGED') {
+        setTranslationMode(message.translationMode);
+      }
+
+      if (message.type === 'PAGE_REFRESHED') {
+        // Reset state when page is refreshed
+        setBlocks([]);
+        setActiveId(null);
+        setFlashingId(null);
+        setStatus('idle');
+        setErrorMsg('');
+        setDownloadProgress(null);
+        rawBlocksRef.current = [];
+        setOpenSections(new Set(['main', 'article'] as PageSection[]));
       }
     });
 
@@ -218,12 +341,6 @@ export default function App() {
     // Port only needs to be created once; language values are accessed via refs below
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Refs so the port message handler always sees current language values
-  const sourceLangRef = useRef(sourceLang);
-  const targetLangRef = useRef(targetLang);
-  useEffect(() => { sourceLangRef.current = sourceLang; }, [sourceLang]);
-  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
 
   // ─── Language change → re-translate stored blocks ───────────────────────
   const isFirstLangRender = useRef(true);
@@ -245,6 +362,10 @@ export default function App() {
     chrome.runtime.sendMessage({ type: 'UNHIGHLIGHT_ELEMENT', id } satisfies Message);
   }, []);
 
+  const handleItemClick = useCallback((id: string) => {
+    chrome.runtime.sendMessage({ type: 'SCROLL_TO_ELEMENT', id } satisfies Message);
+  }, []);
+
   // ─── Language change handlers ─────────────────────────────────────────────
   const handleSourceChange = useCallback((lang: string) => {
     setSourceLang(lang);
@@ -254,6 +375,42 @@ export default function App() {
   const handleTargetChange = useCallback((lang: string) => {
     setTargetLang(lang);
     saveSettings({ targetLanguage: lang });
+  }, []);
+
+  // ─── Block interactive toggle ───────────────────────────────────────────────
+  const handleBlockInteractiveChange = useCallback((enabled: boolean) => {
+    setBlockInteractive(enabled);
+    saveSettings({ blockInteractive: enabled });
+    chrome.runtime.sendMessage({ type: 'BLOCK_INTERACTIVE_CHANGED', blockInteractive: enabled } satisfies Message);
+  }, []);
+
+  // ─── Translation mode toggle ───────────────────────────────────────────────
+  const handleTranslationModeChange = useCallback((enabled: boolean) => {
+    setTranslationMode(enabled);
+    saveSettings({ translationMode: enabled });
+    chrome.runtime.sendMessage({ type: 'SET_MODE', translationMode: enabled } satisfies Message);
+  }, []);
+
+  // ─── Font size control ───────────────────────────────────────────────────────
+  const handleFontSizeChange = useCallback((delta: number) => {
+    setFontSize((prev) => {
+      const newSize = Math.max(10, Math.min(24, prev + delta));
+      saveSettings({ fontSize: newSize });
+      return newSize;
+    });
+  }, []);
+
+  // ─── Accordion section toggle ───────────────────────────────────────────────────
+  const handleSectionToggle = useCallback((section: PageSection, isOpen: boolean) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev);
+      if (isOpen) {
+        next.add(section);
+      } else {
+        next.delete(section);
+      }
+      return next;
+    });
   }, []);
 
   // ─── Refresh button ───────────────────────────────────────────────────────
@@ -266,92 +423,156 @@ export default function App() {
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
     <div className={styles.app}>
-      <header className={styles.header}>
-        <h1 className={styles.title}>Translator</h1>
-        <button
-          className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
-          onClick={handleRefresh}
-          disabled={isLoading}
-          title="Re-scan and translate page"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
-            <path d="M21 3v5h-5" />
-          </svg>
-        </button>
-      </header>
-
-      <LanguagePicker
-        sourceLang={sourceLang}
-        targetLang={targetLang}
-        onSourceChange={handleSourceChange}
-        onTargetChange={handleTargetChange}
-        onTranslate={handleRefresh}
-        isLoading={isLoading}
-      />
-
-      {isLoading && (
-        <div className={styles.beam}>
-          <span className={styles.beamChip}>{sourceLang}</span>
-          <div className={styles.beamTrack}>
-            <div className={styles.beamFill} />
-          </div>
-          <span className={styles.beamChip}>{targetLang}</span>
-        </div>
-      )}
-
-      {status === 'downloading' && downloadProgress !== null && (
-        <div className={`${styles.statusBar} ${styles.info}`}>
-          Downloading language model… {Math.round(downloadProgress * 100)}%
-        </div>
-      )}
-
-      {status === 'same-lang' && (
-        <div className={`${styles.statusBar} ${styles.info}`}>
-          This page is already in the target language — showing original text.
-        </div>
-      )}
-
-      {status === 'error' && (
-        <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
-      )}
-
-      {status === 'idle' && (
-        <div className={styles.idlePlaceholder}>
-          <div className={styles.idleIcon}>
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M8 3 4 7l4 4" />
-              <path d="M4 7h16" />
-              <path d="m16 21 4-4-4-4" />
-              <path d="M20 17H4" />
-            </svg>
-          </div>
-          <p className={styles.idleText}>Press <strong>Translate page</strong> to start.</p>
-        </div>
-      )}
-
-      {isLoading && blocks.length === 0 ? (
-        <div className={styles.skeletonList}>
-          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
-            <div
-              key={i}
-              className={styles.skeletonItem}
-              style={{ animationDelay: `${i * 160}ms` }}
+      <div className={styles.fixedHeader}>
+        <header className={styles.header}>
+          <div className={styles.modeToggle}>
+            <button
+              className={`${styles.modeBtn} ${!translationMode ? styles.modeBtnActive : ''}`}
+              onClick={() => handleTranslationModeChange(false)}
+              title="Read mode"
             >
-              <div className={styles.skeletonLine} style={{ width: `${72 + (i % 3) * 10}%` }} />
-              <div className={styles.skeletonLineShort} style={{ width: `${40 + (i % 4) * 8}%` }} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <TranslationList
-          blocks={blocks}
-          activeId={activeId}
-          itemRefs={itemRefs}
-          onItemMouseEnter={handleItemMouseEnter}
-          onItemMouseLeave={handleItemMouseLeave}
+              Read
+            </button>
+            <button
+              className={`${styles.modeBtn} ${translationMode ? styles.modeBtnActive : ''}`}
+              onClick={() => handleTranslationModeChange(true)}
+              title="Translate mode"
+            >
+              Translate
+            </button>
+          </div>
+          <button
+            className={`${styles.refreshBtn} ${isLoading ? styles.refreshBtnLoading : ''}`}
+            onClick={handleRefresh}
+            disabled={isLoading}
+            title="Re-scan and translate page"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+            </svg>
+          </button>
+        </header>
+
+        <LanguagePicker
+          sourceLang={sourceLang}
+          targetLang={targetLang}
+          onSourceChange={handleSourceChange}
+          onTargetChange={handleTargetChange}
+          onTranslate={handleRefresh}
+          isLoading={isLoading}
         />
-      )}
+
+        <div className={styles.settingsRow}>
+          <label className={styles.checkboxLabel}>
+            <input
+              type="checkbox"
+              checked={blockInteractive}
+              onChange={(e) => handleBlockInteractiveChange(e.target.checked)}
+            />
+            <span>Block clicks</span>
+          </label>
+          <div className={styles.fontSizeControl}>
+            <button
+              className={styles.fontSizeBtn}
+              onClick={() => handleFontSizeChange(-1)}
+              disabled={fontSize <= 10}
+              title="Decrease font size"
+            >
+              −
+            </button>
+            <span className={styles.fontSizeValue}>A</span>
+            <button
+              className={styles.fontSizeBtn}
+              onClick={() => handleFontSizeChange(1)}
+              disabled={fontSize >= 24}
+              title="Increase font size"
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className={styles.scrollableContent}>
+        {isLoading && (
+          <div className={styles.beam}>
+            <span className={styles.beamChip}>{sourceLang}</span>
+            <div className={styles.beamTrack}>
+              <div className={styles.beamFill} />
+            </div>
+            <span className={styles.beamChip}>{targetLang}</span>
+          </div>
+        )}
+
+        {status === 'downloading' && downloadProgress !== null && (
+          <div className={`${styles.statusBar} ${styles.info}`}>
+            {downloadProgress >= 1
+              ? 'Preparing translator…'
+              : `Downloading language model… ${Math.round(downloadProgress * 100)}%`}
+          </div>
+        )}
+
+        {status === 'same-lang' && (
+          <div className={`${styles.statusBar} ${styles.info}`}>
+            This page is already in the target language — showing original text.
+          </div>
+        )}
+
+        {status === 'download-required' && (
+          <div className={`${styles.statusBar} ${styles.info}`}>
+            {errorMsg || 'A language model needs to be downloaded. Click the translate button to start.'}
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className={`${styles.statusBar} ${styles.error}`}>{errorMsg}</div>
+        )}
+
+        {status === 'idle' && (
+          <div className={styles.idlePlaceholder}>
+            <div className={styles.idleIcon}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M8 3 4 7l4 4" />
+                <path d="M4 7h16" />
+                <path d="m16 21 4-4-4-4" />
+                <path d="M20 17H4" />
+              </svg>
+            </div>
+            <p className={styles.idleText}>Press <strong>Translate page</strong> to start.</p>
+          </div>
+        )}
+
+        {isLoading && blocks.length === 0 ? (
+          <div className={styles.skeletonList}>
+            {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+              <div
+                key={i}
+                className={styles.skeletonItem}
+                style={{ animationDelay: `${i * 160}ms` }}
+              >
+                <div className={styles.skeletonLine} style={{ width: `${72 + (i % 3) * 10}%` }} />
+                <div className={styles.skeletonLineShort} style={{ width: `${40 + (i % 4) * 8}%` }} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ '--translation-font-size': `${fontSize}px` } as React.CSSProperties}>
+            <TranslationList
+              blocks={blocks}
+              activeId={activeId}
+              flashingId={flashingId}
+              itemRefs={itemRefs}
+              openSections={openSections}
+              onSectionToggle={handleSectionToggle}
+              onItemMouseEnter={handleItemMouseEnter}
+              onItemMouseLeave={handleItemMouseLeave}
+              onItemClick={handleItemClick}
+              showEmpty={status === 'ready' || status === 'same-lang'}
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

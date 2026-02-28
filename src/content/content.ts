@@ -1,4 +1,24 @@
-import type { Message, TextBlock } from '../lib/messages';
+import type { Message, PageSection, TextBlock } from '../lib/messages';
+import { getSettings, saveSettings } from '../lib/storage';
+
+// ─── Helper: Safe message sending ─────────────────────────────────────────────
+
+/**
+ * Safely send a message to the extension background script.
+ * Returns true if the message was sent, false if the extension context is invalid.
+ */
+function safeSendMessage(message: Message): boolean {
+  try {
+    if (!chrome.runtime?.id) {
+      // Extension context has been invalidated (e.g., extension was reloaded)
+      return false;
+    }
+    chrome.runtime.sendMessage(message).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -11,12 +31,15 @@ const BLOCK_LEVEL_TAGS = new Set([
 
 const SKIP_TAGS = new Set([
   'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'SELECT', 'OPTION',
-  'CODE', 'PRE', 'BUTTON', 'INPUT', 'LABEL', 'SVG', 'MATH',
+  'CODE', 'PRE', 'BUTTON', 'INPUT', 'SVG', 'MATH',
 ]);
 
 const ST_ATTR = 'data-st-id';
 const HIGHLIGHT_CLASS = 'st-highlight';
 const SELECTED_CLASS = 'st-selected';
+const FLASH_CLASS = 'st-flash';
+const TRANSLATION_MODE_CLASS = 'st-translation-mode';
+const BLOCK_INTERACTIVE_CLASS = 'st-block-interactive';
 const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -26,6 +49,8 @@ let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
 let activated = false; // true after first EXTRACT_TEXT
+let translationMode = true; // Default: translation mode active
+let blockInteractive = false; // Default: don't block interactive elements
 
 // ─── Style injection ──────────────────────────────────────────────────────────
 
@@ -34,21 +59,93 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.id = 'st-styles';
   style.textContent = `
-    [${ST_ATTR}].${HIGHLIGHT_CLASS} {
+    /* Highlight styles */
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${HIGHLIGHT_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.08) !important;
+      outline-offset: 2px;
       border-radius: 2px;
     }
-    [${ST_ATTR}].${SELECTED_CLASS} {
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${SELECTED_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.18) !important;
+      outline-offset: 2px;
       border-radius: 2px;
+    }
+
+    /* Cursor pointer on blocks in translation mode */
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}] {
+      cursor: pointer !important;
+    }
+
+    /* Block interactive elements when enabled */
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] a *,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] button,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] input,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] select,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] textarea,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [role="button"],
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] label,
+    body.${TRANSLATION_MODE_CLASS}.${BLOCK_INTERACTIVE_CLASS} [${ST_ATTR}] [onclick]:not([onclick=""]) {
+      pointer-events: none !important;
+    }
+
+    /* Flash animation for selected elements */
+    @keyframes st-flash {
+      0% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.25); }
+      50% { outline-color: #818cf8; background-color: rgba(129, 140, 248, 0.4); }
+      100% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.18); }
+    }
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${FLASH_CLASS} {
+      outline: 2px solid #4f46e5 !important;
+      border-radius: 2px;
+      animation: st-flash 0.4s ease-in-out 1;
     }
   `;
   document.head.appendChild(style);
 }
 
+// ─── Mode Management ────────────────────────────────────────────────────────────
+
+function setTranslationMode(enabled: boolean): void {
+  translationMode = enabled;
+  updateModeUI();
+
+  // Persist the setting
+  saveSettings({ translationMode: enabled });
+
+  // Clear any existing highlights when switching to read mode
+  if (!enabled && currentHighlightedEl) {
+    currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
+    currentHighlightedEl = null;
+  }
+
+  // Notify sidebar of mode change
+  safeSendMessage({ type: 'MODE_CHANGED', translationMode: enabled } satisfies Message);
+}
+
+function updateModeUI(): void {
+  document.body.classList.toggle(TRANSLATION_MODE_CLASS, translationMode);
+  updateBlockInteractiveUI();
+}
+
+function updateBlockInteractiveUI(): void {
+  document.body.classList.toggle(BLOCK_INTERACTIVE_CLASS, blockInteractive && translationMode);
+}
+
+function setBlockInteractive(enabled: boolean): void {
+  blockInteractive = enabled;
+  updateBlockInteractiveUI();
+}
+
 // ─── DOM Utilities ────────────────────────────────────────────────────────────
+
+/**
+ * Creates a safe selector for finding elements by their st-id attribute.
+ * Uses CSS.escape to handle IDs that might contain special characters.
+ */
+function getElementByStId(id: string): HTMLElement | null {
+  return document.querySelector(`[${ST_ATTR}="${CSS.escape(id)}"]`) as HTMLElement | null;
+}
 
 function isHidden(el: Element): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -74,17 +171,76 @@ function shouldSkip(node: Node): boolean {
   return false;
 }
 
+/**
+ * Check if text is meaningful enough to be translated.
+ * Filters out:
+ * - Very short text (less than 2 characters)
+ * - Text containing only special characters/punctuation (e.g., "*", "•", "...")
+ */
+function isMeaningfulText(text: string): boolean {
+  if (!text || text.length < 2) return false;
+  // Check if there's at least one letter or number
+  return /[a-zA-Z0-9\u00C0-\u024F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(text);
+}
+
 function getBlockParent(node: Node): HTMLElement | null {
   let current: Node | null = node.parentNode;
+
   while (current && current !== document.body) {
     if (current instanceof HTMLElement) {
       const tag = current.tagName;
+
+      // Standard block-level tags
       if (BLOCK_LEVEL_TAGS.has(tag)) return current;
       if (current.getAttribute('role') === 'article') return current;
+
+      // Check if this element is a flex/grid item
+      // This handles inline elements (like span, label) that are direct children
+      // of flex/grid containers and should be treated as separate blocks
+      const parent = current.parentElement;
+      if (parent && parent !== document.body) {
+        const parentStyle = window.getComputedStyle(parent);
+        const parentDisplay = parentStyle.display;
+        if (parentDisplay === 'flex' || parentDisplay === 'grid' ||
+            parentDisplay === 'inline-flex' || parentDisplay === 'inline-grid') {
+          return current;
+        }
+      }
     }
     current = current.parentNode;
   }
+
   return node.parentElement;
+}
+
+function getPageSection(el: HTMLElement): PageSection {
+  // Check explicit role first
+  const role = el.getAttribute('role');
+  if (role === 'banner') return 'header';
+  if (role === 'navigation') return 'nav';
+  if (role === 'main') return 'main';
+  if (role === 'complementary') return 'aside';
+  if (role === 'contentinfo') return 'footer';
+  if (role === 'article') return 'article';
+
+  // Check semantic tags
+  const tag = el.tagName;
+
+  // Walk up the DOM to find the nearest semantic container
+  let current: HTMLElement | null = el;
+  while (current && current !== document.body) {
+    const currentTag = current.tagName;
+    if (currentTag === 'HEADER') return 'header';
+    if (currentTag === 'NAV') return 'nav';
+    if (currentTag === 'MAIN') return 'main';
+    if (currentTag === 'ASIDE') return 'aside';
+    if (currentTag === 'FOOTER') return 'footer';
+    if (currentTag === 'ARTICLE') return 'article';
+    if (currentTag === 'SECTION') return 'section';
+    current = current.parentElement;
+  }
+
+  return 'other';
 }
 
 // ─── Text Extraction ──────────────────────────────────────────────────────────
@@ -156,6 +312,9 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
       const text = node.textContent?.trim() ?? '';
       if (!text) return NodeFilter.FILTER_SKIP;
 
+      // Skip non-meaningful text (e.g., "*", "•", etc.)
+      if (!isMeaningfulText(text)) return NodeFilter.FILTER_SKIP;
+
       const el = node.parentElement;
       if (!el || isHidden(el)) return NodeFilter.FILTER_SKIP;
 
@@ -170,17 +329,23 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
     if (!blockEl) continue;
     if (isHidden(blockEl)) continue;
 
+    const text = textNode.textContent?.trim() ?? '';
+    // Double-check at block level (in case walker filter was bypassed)
+    if (!isMeaningfulText(text)) continue;
+
     const texts = blockMap.get(blockEl) ?? [];
-    texts.push(textNode.textContent?.trim() ?? '');
+    texts.push(text);
     blockMap.set(blockEl, texts);
   }
 
   const blocks: TextBlock[] = [];
   for (const [el, texts] of blockMap) {
     const text = texts.join(' ').trim();
-    if (!text) continue;
+    // Final check for meaningful content
+    if (!isMeaningfulText(text)) continue;
     const id = assignId(el, text);
-    blocks.push({ id, text });
+    const section = getPageSection(el);
+    blocks.push({ id, text, section });
   }
 
   return blocks;
@@ -188,17 +353,41 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
-function setupEventListeners(): void {
-  let currentHighlightId: string | null = null;
+let currentHighlightId: string | null = null;
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const HOVER_DEBOUNCE_MS = 300;
 
+function setupEventListeners(): void {
   document.addEventListener('mouseover', (e) => {
+    if (!translationMode) return;
+
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
+    if (!el) {
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
     if (id === currentHighlightId) return;
-    currentHighlightId = id;
 
+    // Clear any pending debounce timer
+    if (hoverDebounceTimer) {
+      clearTimeout(hoverDebounceTimer);
+      hoverDebounceTimer = null;
+    }
+
+    // Update highlight immediately for visual feedback
+    currentHighlightId = id;
     if (id) {
       highlightElement(id);
     } else if (currentHighlightedEl) {
@@ -206,36 +395,82 @@ function setupEventListeners(): void {
       currentHighlightedEl = null;
     }
 
-    chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message).catch(() => {});
+    // Debounce the message to sidebar to avoid rapid scrolling
+    hoverDebounceTimer = setTimeout(() => {
+      hoverDebounceTimer = null;
+      safeSendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message);
+    }, HOVER_DEBOUNCE_MS);
   });
 
   document.addEventListener('mouseout', (e) => {
+    if (!translationMode) return;
+
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
+    if (!el) {
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
     if (!el) return;
 
     const relatedTarget = e.relatedTarget as Element | null;
     const stillInside = relatedTarget ? el.contains(relatedTarget) : false;
     if (!stillInside) {
+      // Clear any pending debounce timer
+      if (hoverDebounceTimer) {
+        clearTimeout(hoverDebounceTimer);
+        hoverDebounceTimer = null;
+      }
+
       currentHighlightId = null;
       if (currentHighlightedEl) {
         currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
         currentHighlightedEl = null;
       }
-      chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message).catch(() => {});
+      safeSendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message);
     }
   });
 
   document.addEventListener('click', (e) => {
+    if (!translationMode) return;
+
     const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    let el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+
+    // If element doesn't have data-st-id, walk up the DOM to find an ancestor that does
+    if (!el) {
+      let parent: Element | null = target.parentElement;
+      while (parent && parent !== document.body) {
+        if (parent.hasAttribute(ST_ATTR)) {
+          el = parent as HTMLElement;
+          break;
+        }
+        parent = parent.parentElement;
+      }
+    }
+
     if (!el) return;
 
     const id = el.getAttribute(ST_ATTR);
     if (!id) return;
 
-    chrome.runtime.sendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message).catch(() => {});
-  });
+    // Block the click if blockInteractive is enabled
+    if (blockInteractive) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    safeSendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message);
+  }, true); // Use capture phase to intercept before other handlers
 }
 
 // ─── Highlight Handlers ───────────────────────────────────────────────────────
@@ -247,7 +482,7 @@ function highlightElement(id: string): void {
     currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
     currentHighlightedEl = null;
   }
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) {
     el.classList.add(HIGHLIGHT_CLASS);
     currentHighlightedEl = el;
@@ -255,11 +490,29 @@ function highlightElement(id: string): void {
 }
 
 function unhighlightElement(id: string): void {
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) el.classList.remove(HIGHLIGHT_CLASS);
   if (currentHighlightedEl?.getAttribute(ST_ATTR) === id) {
     currentHighlightedEl = null;
   }
+}
+
+function scrollToElement(id: string): void {
+  const el = getElementByStId(id);
+  if (!el) return;
+
+  // Scroll into view
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Flash animation
+  el.classList.remove(FLASH_CLASS);
+  void el.offsetWidth; // Force reflow to restart animation
+  el.classList.add(FLASH_CLASS);
+
+  // Remove flash class after animation completes
+  setTimeout(() => {
+    el.classList.remove(FLASH_CLASS);
+  }, 400);
 }
 
 // ─── MutationObserver ─────────────────────────────────────────────────────────
@@ -297,13 +550,13 @@ function setupMutationObserver(): void {
       pendingAdded.clear();
 
       if (newBlocks.length > 0) {
-        chrome.runtime.sendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message).catch(() => {});
+        safeSendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message);
       }
     }
 
     if (pendingUpdated.size > 0) {
       for (const [id, text] of pendingUpdated) {
-        chrome.runtime.sendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message).catch(() => {});
+        safeSendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message);
       }
       pendingUpdated.clear();
     }
@@ -370,6 +623,15 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       activated = true;
       injectStyles();
       setupEventListeners();
+
+      // Load persisted settings for translation mode and block interactive
+      getSettings().then((settings) => {
+        translationMode = settings.translationMode;
+        blockInteractive = settings.blockInteractive;
+        updateModeUI();
+      });
+
+      updateModeUI(); // Apply initial translation mode state to body class
     }
 
     const blocks = extractTextBlocks();
@@ -378,13 +640,34 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
     return false;
   }
 
+  if (message.type === 'SET_MODE') {
+    setTranslationMode(message.translationMode);
+    return false;
+  }
+
   if (message.type === 'HIGHLIGHT_ELEMENT') {
-    highlightElement(message.id);
+    if (translationMode) {
+      highlightElement(message.id);
+    }
     return false;
   }
 
   if (message.type === 'UNHIGHLIGHT_ELEMENT') {
-    unhighlightElement(message.id);
+    if (translationMode) {
+      unhighlightElement(message.id);
+    }
+    return false;
+  }
+
+  if (message.type === 'SCROLL_TO_ELEMENT') {
+    if (translationMode) {
+      scrollToElement(message.id);
+    }
+    return false;
+  }
+
+  if (message.type === 'BLOCK_INTERACTIVE_CHANGED') {
+    setBlockInteractive(message.blockInteractive);
     return false;
   }
 

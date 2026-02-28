@@ -32,19 +32,19 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
 
-  // Capture the active tab at connect time. When the port later disconnects
-  // (user pressed X to close the panel), remove the tab from openedTabs so
-  // the next action click re-opens rather than double-toggling to close.
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tabId = tabs[0]?.id;
-    if (tabId == null) return;
+  // Listen for the sidepanel to send its tab ID
+  port.onMessage.addListener((message: Message) => {
+    if (message.type === 'SIDEPANEL_READY') {
+      const tabId = message.tabId;
+      if (tabId == null) return;
 
-    tabPorts.set(tabId, port);
+      tabPorts.set(tabId, port);
 
-    port.onDisconnect.addListener(() => {
-      tabPorts.delete(tabId);
-      openedTabs.delete(tabId);
-    });
+      port.onDisconnect.addListener(() => {
+        tabPorts.delete(tabId);
+        openedTabs.delete(tabId);
+      });
+    }
   });
 });
 
@@ -52,6 +52,16 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   openedTabs.delete(tabId);
   tabPorts.delete(tabId);
+});
+
+// Notify sidebar when a tab is refreshed (navigated to same URL or reloaded)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    const port = tabPorts.get(tabId);
+    if (port) {
+      port.postMessage({ type: 'PAGE_REFRESHED' } as Message);
+    }
+  }
 });
 
 // Relay messages between content script and side panel
@@ -80,7 +90,8 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'ELEMENT_HOVERED' ||
     message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
-    message.type === 'TEXT_UPDATED'
+    message.type === 'TEXT_UPDATED' ||
+    message.type === 'MODE_CHANGED'
   ) {
     // Only forward to the sidepanel port associated with this specific tab
     if (senderTabId != null) {
@@ -90,7 +101,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT') {
+  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT' || message.type === 'BLOCK_INTERACTIVE_CHANGED' || message.type === 'SET_MODE') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {

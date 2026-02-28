@@ -1,6 +1,9 @@
+export type PageSection = 'header' | 'nav' | 'main' | 'aside' | 'footer' | 'article' | 'section' | 'other';
+
 export interface TextBlock {
   id: string;
   text: string;
+  section: PageSection;
 }
 
 export type Message =
@@ -11,4 +14,10 @@ export type Message =
   | { type: 'ELEMENT_HOVERED'; id: string | null }
   | { type: 'ELEMENT_CLICKED'; id: string }
   | { type: 'HIGHLIGHT_ELEMENT'; id: string }
-  | { type: 'UNHIGHLIGHT_ELEMENT'; id: string };
+  | { type: 'UNHIGHLIGHT_ELEMENT'; id: string }
+  | { type: 'SCROLL_TO_ELEMENT'; id: string }
+  | { type: 'SET_MODE'; translationMode: boolean }
+  | { type: 'MODE_CHANGED'; translationMode: boolean }
+  | { type: 'BLOCK_INTERACTIVE_CHANGED'; blockInteractive: boolean }
+  | { type: 'PAGE_REFRESHED' }
+  | { type: 'SIDEPANEL_READY'; tabId: number };
