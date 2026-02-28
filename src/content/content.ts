@@ -171,6 +171,18 @@ function shouldSkip(node: Node): boolean {
   return false;
 }
 
+/**
+ * Check if text is meaningful enough to be translated.
+ * Filters out:
+ * - Very short text (less than 2 characters)
+ * - Text containing only special characters/punctuation (e.g., "*", "•", "...")
+ */
+function isMeaningfulText(text: string): boolean {
+  if (!text || text.length < 2) return false;
+  // Check if there's at least one letter or number
+  return /[a-zA-Z0-9\u00C0-\u024F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/.test(text);
+}
+
 function getBlockParent(node: Node): HTMLElement | null {
   let current: Node | null = node.parentNode;
 
@@ -300,6 +312,9 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
       const text = node.textContent?.trim() ?? '';
       if (!text) return NodeFilter.FILTER_SKIP;
 
+      // Skip non-meaningful text (e.g., "*", "•", etc.)
+      if (!isMeaningfulText(text)) return NodeFilter.FILTER_SKIP;
+
       const el = node.parentElement;
       if (!el || isHidden(el)) return NodeFilter.FILTER_SKIP;
 
@@ -314,15 +329,20 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
     if (!blockEl) continue;
     if (isHidden(blockEl)) continue;
 
+    const text = textNode.textContent?.trim() ?? '';
+    // Double-check at block level (in case walker filter was bypassed)
+    if (!isMeaningfulText(text)) continue;
+
     const texts = blockMap.get(blockEl) ?? [];
-    texts.push(textNode.textContent?.trim() ?? '');
+    texts.push(text);
     blockMap.set(blockEl, texts);
   }
 
   const blocks: TextBlock[] = [];
   for (const [el, texts] of blockMap) {
     const text = texts.join(' ').trim();
-    if (!text) continue;
+    // Final check for meaningful content
+    if (!isMeaningfulText(text)) continue;
     const id = assignId(el, text);
     const section = getPageSection(el);
     blocks.push({ id, text, section });
