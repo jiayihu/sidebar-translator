@@ -1,4 +1,24 @@
-import type { Message, TextBlock } from '../lib/messages';
+import type { Message, PageSection, TextBlock } from '../lib/messages';
+import { getSettings } from '../lib/storage';
+
+// ─── Helper: Safe message sending ─────────────────────────────────────────────
+
+/**
+ * Safely send a message to the extension background script.
+ * Returns true if the message was sent, false if the extension context is invalid.
+ */
+function safeSendMessage(message: Message): boolean {
+  try {
+    if (!chrome.runtime?.id) {
+      // Extension context has been invalidated (e.g., extension was reloaded)
+      return false;
+    }
+    chrome.runtime.sendMessage(message).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -16,7 +36,8 @@ const SKIP_TAGS = new Set([
 
 const ST_ATTR = 'data-st-id';
 const HIGHLIGHT_CLASS = 'st-highlight';
-const SELECTED_CLASS = 'st-selected';
+const FLASH_CLASS = 'st-flash';
+const TRANSLATION_MODE_CLASS = 'st-translation-mode';
 const DEBOUNCE_MS = 400;
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -26,6 +47,7 @@ let observer: MutationObserver | null = null;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let observerActive = false;
 let activated = false; // true after first EXTRACT_TEXT
+let translationMode = true; // Default: translation mode active
 
 // ─── Style injection ──────────────────────────────────────────────────────────
 
@@ -34,21 +56,53 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.id = 'st-styles';
   style.textContent = `
-    [${ST_ATTR}].${HIGHLIGHT_CLASS} {
+    /* Highlight styles */
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${HIGHLIGHT_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.08) !important;
+      outline-offset: 2px;
       border-radius: 2px;
     }
-    [${ST_ATTR}].${SELECTED_CLASS} {
+    /* Flash animation for selected elements */
+    @keyframes st-flash {
+      0% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.25); }
+      50% { outline-color: #818cf8; background-color: rgba(129, 140, 248, 0.4); }
+      100% { outline-color: #4f46e5; background-color: rgba(79, 70, 229, 0.18); }
+    }
+    body.${TRANSLATION_MODE_CLASS} [${ST_ATTR}].${FLASH_CLASS} {
       outline: 2px solid #4f46e5 !important;
-      background: rgba(79, 70, 229, 0.18) !important;
       border-radius: 2px;
+      animation: st-flash 0.4s ease-in-out 1;
     }
   `;
   document.head.appendChild(style);
 }
 
+// ─── Mode Management ────────────────────────────────────────────────────────────
+
+function setTranslationMode(enabled: boolean): void {
+  translationMode = enabled;
+  updateModeUI();
+
+  // Clear any existing highlights when switching to read mode
+  if (!enabled && currentHighlightedEl) {
+    currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
+    currentHighlightedEl = null;
+  }
+}
+
+function updateModeUI(): void {
+  document.body.classList.toggle(TRANSLATION_MODE_CLASS, translationMode);
+}
+
 // ─── DOM Utilities ────────────────────────────────────────────────────────────
+
+/**
+ * Creates a safe selector for finding elements by their st-id attribute.
+ * Uses CSS.escape to handle IDs that might contain special characters.
+ */
+function getElementByStId(id: string): HTMLElement | null {
+  return document.querySelector(`[${ST_ATTR}="${CSS.escape(id)}"]`) as HTMLElement | null;
+}
 
 function isHidden(el: Element): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -85,6 +139,33 @@ function getBlockParent(node: Node): HTMLElement | null {
     current = current.parentNode;
   }
   return node.parentElement;
+}
+
+function getPageSection(el: HTMLElement): PageSection {
+  // Check explicit role first
+  const role = el.getAttribute('role');
+  if (role === 'banner') return 'header';
+  if (role === 'navigation') return 'nav';
+  if (role === 'main') return 'main';
+  if (role === 'complementary') return 'aside';
+  if (role === 'contentinfo') return 'footer';
+  if (role === 'article') return 'article';
+
+  // Walk up the DOM to find the nearest semantic container
+  let current: HTMLElement | null = el;
+  while (current && current !== document.body) {
+    const currentTag = current.tagName;
+    if (currentTag === 'HEADER') return 'header';
+    if (currentTag === 'NAV') return 'nav';
+    if (currentTag === 'MAIN') return 'main';
+    if (currentTag === 'ASIDE') return 'aside';
+    if (currentTag === 'FOOTER') return 'footer';
+    if (currentTag === 'ARTICLE') return 'article';
+    if (currentTag === 'SECTION') return 'section';
+    current = current.parentElement;
+  }
+
+  return 'other';
 }
 
 // ─── Text Extraction ──────────────────────────────────────────────────────────
@@ -180,7 +261,8 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
     const text = texts.join(' ').trim();
     if (!text) continue;
     const id = assignId(el, text);
-    blocks.push({ id, text });
+    const section = getPageSection(el);
+    blocks.push({ id, text, section });
   }
 
   return blocks;
@@ -188,17 +270,31 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 
-function setupEventListeners(): void {
-  let currentHighlightId: string | null = null;
+function findStElement(target: Element): HTMLElement | null {
+  return target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+}
 
+let currentHighlightId: string | null = null;
+let hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const HOVER_DEBOUNCE_MS = 300;
+
+function setupEventListeners(): void {
   document.addEventListener('mouseover', (e) => {
-    const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    if (!translationMode) return;
+
+    const el = findStElement(e.target as Element);
     const id = el?.getAttribute(ST_ATTR) ?? null;
 
     if (id === currentHighlightId) return;
-    currentHighlightId = id;
 
+    // Clear any pending debounce timer
+    if (hoverDebounceTimer) {
+      clearTimeout(hoverDebounceTimer);
+      hoverDebounceTimer = null;
+    }
+
+    // Update highlight immediately for visual feedback
+    currentHighlightId = id;
     if (id) {
       highlightElement(id);
     } else if (currentHighlightedEl) {
@@ -206,36 +302,37 @@ function setupEventListeners(): void {
       currentHighlightedEl = null;
     }
 
-    chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message).catch(() => {});
+    // Debounce the message to sidebar to avoid rapid scrolling
+    hoverDebounceTimer = setTimeout(() => {
+      hoverDebounceTimer = null;
+      safeSendMessage({ type: 'ELEMENT_HOVERED', id } satisfies Message);
+    }, HOVER_DEBOUNCE_MS);
   });
 
   document.addEventListener('mouseout', (e) => {
-    const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
+    if (!translationMode) return;
+
+    const el = findStElement(e.target as Element);
     if (!el) return;
 
     const relatedTarget = e.relatedTarget as Element | null;
     const stillInside = relatedTarget ? el.contains(relatedTarget) : false;
     if (!stillInside) {
+      // Clear any pending debounce timer
+      if (hoverDebounceTimer) {
+        clearTimeout(hoverDebounceTimer);
+        hoverDebounceTimer = null;
+      }
+
       currentHighlightId = null;
       if (currentHighlightedEl) {
         currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
         currentHighlightedEl = null;
       }
-      chrome.runtime.sendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message).catch(() => {});
+      safeSendMessage({ type: 'ELEMENT_HOVERED', id: null } satisfies Message);
     }
   });
 
-  document.addEventListener('click', (e) => {
-    const target = e.target as Element;
-    const el = target.closest(`[${ST_ATTR}]`) as HTMLElement | null;
-    if (!el) return;
-
-    const id = el.getAttribute(ST_ATTR);
-    if (!id) return;
-
-    chrome.runtime.sendMessage({ type: 'ELEMENT_CLICKED', id } satisfies Message).catch(() => {});
-  });
 }
 
 // ─── Highlight Handlers ───────────────────────────────────────────────────────
@@ -247,7 +344,7 @@ function highlightElement(id: string): void {
     currentHighlightedEl.classList.remove(HIGHLIGHT_CLASS);
     currentHighlightedEl = null;
   }
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) {
     el.classList.add(HIGHLIGHT_CLASS);
     currentHighlightedEl = el;
@@ -255,11 +352,29 @@ function highlightElement(id: string): void {
 }
 
 function unhighlightElement(id: string): void {
-  const el = document.querySelector(`[${ST_ATTR}="${id}"]`) as HTMLElement | null;
+  const el = getElementByStId(id);
   if (el) el.classList.remove(HIGHLIGHT_CLASS);
   if (currentHighlightedEl?.getAttribute(ST_ATTR) === id) {
     currentHighlightedEl = null;
   }
+}
+
+function scrollToElement(id: string): void {
+  const el = getElementByStId(id);
+  if (!el) return;
+
+  // Scroll into view
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+  // Flash animation
+  el.classList.remove(FLASH_CLASS);
+  void el.offsetWidth; // Force reflow to restart animation
+  el.classList.add(FLASH_CLASS);
+
+  // Remove flash class after animation completes
+  setTimeout(() => {
+    el.classList.remove(FLASH_CLASS);
+  }, 400);
 }
 
 // ─── MutationObserver ─────────────────────────────────────────────────────────
@@ -297,13 +412,13 @@ function setupMutationObserver(): void {
       pendingAdded.clear();
 
       if (newBlocks.length > 0) {
-        chrome.runtime.sendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message).catch(() => {});
+        safeSendMessage({ type: 'NEW_TEXT_BLOCKS', blocks: newBlocks } satisfies Message);
       }
     }
 
     if (pendingUpdated.size > 0) {
       for (const [id, text] of pendingUpdated) {
-        chrome.runtime.sendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message).catch(() => {});
+        safeSendMessage({ type: 'TEXT_UPDATED', id, text } satisfies Message);
       }
       pendingUpdated.clear();
     }
@@ -370,21 +485,48 @@ chrome.runtime.onMessage.addListener((message: Message, _sender, sendResponse) =
       activated = true;
       injectStyles();
       setupEventListeners();
+
+      // Load persisted settings for translation mode
+      getSettings().then((settings) => {
+        translationMode = settings.translationMode;
+        updateModeUI();
+      });
     }
 
-    const blocks = extractTextBlocks();
-    setupMutationObserver();
-    sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
+    try {
+      const blocks = extractTextBlocks();
+      setupMutationObserver();
+      sendResponse({ type: 'PAGE_TEXT', blocks, pageLang: document.documentElement.lang || undefined });
+    } catch (err) {
+      console.error('[SidebarTranslator] extractTextBlocks failed', err);
+      sendResponse({ type: 'PAGE_TEXT', blocks: [], pageLang: undefined });
+    }
+    return false;
+  }
+
+  if (message.type === 'SET_MODE') {
+    setTranslationMode(message.translationMode);
     return false;
   }
 
   if (message.type === 'HIGHLIGHT_ELEMENT') {
-    highlightElement(message.id);
+    if (translationMode) {
+      highlightElement(message.id);
+    }
     return false;
   }
 
   if (message.type === 'UNHIGHLIGHT_ELEMENT') {
-    unhighlightElement(message.id);
+    if (translationMode) {
+      unhighlightElement(message.id);
+    }
+    return false;
+  }
+
+  if (message.type === 'SCROLL_TO_ELEMENT') {
+    if (translationMode) {
+      scrollToElement(message.id);
+    }
     return false;
   }
 
