@@ -1,4 +1,5 @@
 import type { Message } from '../lib/messages';
+import { isMessage } from '../lib/messages';
 
 const SIDEPANEL_PATH = 'src/sidepanel/index.html';
 
@@ -7,6 +8,23 @@ const openedTabs = new Set<number>();
 
 // Map from tab ID → the sidepanel port monitoring that tab (supports multiple windows)
 const tabPorts = new Map<number, chrome.runtime.Port>();
+
+/**
+ * Safely send a message through a port with error handling.
+ * If the port is disconnected, cleans up the port from tabPorts.
+ */
+function safePostMessage(port: chrome.runtime.Port, tabId: number, message: Message): boolean {
+  try {
+    port.postMessage(message);
+    return true;
+  } catch (error) {
+    console.error(`[background] Failed to send message to sidepanel for tab ${tabId}:`, error);
+    // Port is likely disconnected, clean up
+    tabPorts.delete(tabId);
+    openedTabs.delete(tabId);
+    return false;
+  }
+}
 
 // We handle the action click ourselves to get per-tab, toggle behaviour
 chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false }).catch(console.error);
@@ -32,19 +50,25 @@ chrome.action.onClicked.addListener((tab) => {
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== 'sidepanel') return;
 
-  // Capture the active tab at connect time. When the port later disconnects
-  // (user pressed X to close the panel), remove the tab from openedTabs so
-  // the next action click re-opens rather than double-toggling to close.
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    const tabId = tabs[0]?.id;
-    if (tabId == null) return;
+  // Listen for the sidepanel to send its tab ID
+  port.onMessage.addListener((message: unknown) => {
+    // Validate message before processing
+    if (!isMessage(message)) {
+      console.warn('[background] Received invalid message from sidepanel:', message);
+      return;
+    }
 
-    tabPorts.set(tabId, port);
+    if (message.type === 'SIDEPANEL_READY') {
+      const tabId = message.tabId;
+      if (tabId == null) return;
 
-    port.onDisconnect.addListener(() => {
-      tabPorts.delete(tabId);
-      openedTabs.delete(tabId);
-    });
+      tabPorts.set(tabId, port);
+
+      port.onDisconnect.addListener(() => {
+        tabPorts.delete(tabId);
+        openedTabs.delete(tabId);
+      });
+    }
   });
 });
 
@@ -54,8 +78,24 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   tabPorts.delete(tabId);
 });
 
+// Notify sidebar when a tab is refreshed (navigated to same URL or reloaded)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    const port = tabPorts.get(tabId);
+    if (port) {
+      safePostMessage(port, tabId, { type: 'PAGE_REFRESHED' });
+    }
+  }
+});
+
 // Relay messages between content script and side panel
-chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  // Validate that message has proper structure
+  if (!isMessage(message)) {
+    console.warn('[background] Received invalid message:', message);
+    return false;
+  }
+
   const senderTabId = sender.tab?.id;
 
   if (message.type === 'EXTRACT_TEXT') {
@@ -67,6 +107,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       }
       chrome.tabs.sendMessage(activeTab.id, message, (response) => {
         if (chrome.runtime.lastError) {
+          console.error('[background] Failed to send EXTRACT_TEXT to content script:', chrome.runtime.lastError.message);
           sendResponse(null);
           return;
         }
@@ -80,22 +121,27 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     message.type === 'ELEMENT_HOVERED' ||
     message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
-    message.type === 'TEXT_UPDATED'
+    message.type === 'TEXT_UPDATED' ||
+    message.type === 'MODE_CHANGED'
   ) {
     // Only forward to the sidepanel port associated with this specific tab
     if (senderTabId != null) {
       const port = tabPorts.get(senderTabId);
-      if (port) port.postMessage(message);
+      if (port) {
+        safePostMessage(port, senderTabId, message);
+      }
     }
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT') {
+  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT' || message.type === 'BLOCK_INTERACTIVE_CHANGED' || message.type === 'SET_MODE') {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
         chrome.tabs.sendMessage(activeTab.id, message, () => {
-          void chrome.runtime.lastError; // acknowledge to suppress unchecked warning
+          if (chrome.runtime.lastError) {
+            console.error('[background] Failed to send message to content script:', chrome.runtime.lastError.message);
+          }
         });
       }
     });
@@ -104,7 +150,9 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 
   if (senderTabId != null && message.type === 'PAGE_TEXT') {
     const port = tabPorts.get(senderTabId);
-    if (port) port.postMessage(message);
+    if (port) {
+      safePostMessage(port, senderTabId, message);
+    }
   }
 
   return false;
