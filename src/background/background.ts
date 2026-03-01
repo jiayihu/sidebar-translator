@@ -24,7 +24,9 @@ chrome.action.onClicked.addListener((tab) => {
     openedTabs.add(tabId);
     // Both calls must stay in the same synchronous tick so open() is still
     // within the user-gesture context. Chaining with .then() loses it.
-    chrome.sidePanel.setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH }).catch(console.error);
+    chrome.sidePanel
+      .setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH })
+      .catch(console.error);
     chrome.sidePanel.open({ tabId }).catch(console.error);
   }
 });
@@ -78,31 +80,7 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
       }
       const tabId = activeTab.id;
       chrome.tabs.sendMessage(tabId, message, (response) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[SidebarTranslator] EXTRACT_TEXT: no content script, injecting…', chrome.runtime.lastError.message);
-          const contentScriptPath = chrome.runtime.getManifest().content_scripts![0].js![0];
-          chrome.scripting.executeScript(
-            { target: { tabId }, files: [contentScriptPath] },
-            () => {
-              if (chrome.runtime.lastError) {
-                console.warn('[SidebarTranslator] Content script injection failed:', chrome.runtime.lastError.message);
-                sendResponse(null);
-                return;
-              }
-              // Retry after injection
-              chrome.tabs.sendMessage(tabId, message, (retryResponse) => {
-                if (chrome.runtime.lastError) {
-                  console.warn('[SidebarTranslator] EXTRACT_TEXT retry failed:', chrome.runtime.lastError.message);
-                  sendResponse(null);
-                  return;
-                }
-                sendResponse(retryResponse);
-              });
-            },
-          );
-          return;
-        }
-        sendResponse(response);
+        sendResponse(response ?? null);
       });
     });
     return true;
@@ -121,13 +99,16 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT' || message.type === 'SCROLL_TO_ELEMENT' || message.type === 'SET_MODE') {
+  if (
+    message.type === 'HIGHLIGHT_ELEMENT' ||
+    message.type === 'UNHIGHLIGHT_ELEMENT' ||
+    message.type === 'SCROLL_TO_ELEMENT' ||
+    message.type === 'SET_MODE'
+  ) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
-        chrome.tabs.sendMessage(activeTab.id, message, () => {
-          void chrome.runtime.lastError; // acknowledge to suppress unchecked warning
-        });
+        chrome.tabs.sendMessage(activeTab.id, message);
       }
     });
     return false;

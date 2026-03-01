@@ -10,7 +10,7 @@
     "48": "public/icons/icon48.png",
     "128": "public/icons/icon128.png"
   },
-  "permissions": ["sidePanel", "activeTab", "storage", "scripting"],
+  "permissions": ["sidePanel", "activeTab", "storage"],
   "background": {
     "service_worker": "src/background/background.ts",
     "type": "module"
