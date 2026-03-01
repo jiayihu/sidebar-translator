@@ -93,12 +93,13 @@ export async function detectPageLanguage(
   return pageLang ? normalizeLangCode(pageLang) : null;
 }
 
-/** Normalize language code to base form (e.g., 'it-IT' → 'it', 'zh-TW' stays as-is) */
+/** Normalize language code to base form (e.g., 'it-IT' → 'it', 'zh-TW' → 'zh-tw') */
 export function normalizeLangCode(code: string): string {
-  // Preserve zh-TW, zh-HK, etc. as they are distinct Chinese variants
-  if (code.startsWith('zh-')) return code;
+  const lower = code.toLowerCase();
+  // Preserve zh-tw, zh-hk, etc. as they are distinct Chinese variants
+  if (lower.startsWith('zh-')) return lower;
   // For other codes, take only the base language part
-  return code.toLowerCase().split('-')[0]!;
+  return lower.split('-')[0]!;
 }
 
 /** Error thrown when the translator model needs to be downloaded but no user gesture is available */

@@ -151,9 +151,6 @@ function getPageSection(el: HTMLElement): PageSection {
   if (role === 'contentinfo') return 'footer';
   if (role === 'article') return 'article';
 
-  // Check semantic tags
-  const tag = el.tagName;
-
   // Walk up the DOM to find the nearest semantic container
   let current: HTMLElement | null = el;
   while (current && current !== document.body) {

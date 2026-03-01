@@ -224,8 +224,10 @@ export default function App() {
       const section = blockToSectionRef.current.get(id);
       if (section && !openSectionsRef.current.has(section)) {
         setOpenSections((prev) => new Set(prev).add(section));
-        setPendingScrollId(id);
       }
+      // Always schedule scroll when the element ref is missing,
+      // even if the section is already open (refs may not be mounted yet)
+      setPendingScrollId(id);
     }
 
     function handlePortMessage(message: Message) {
