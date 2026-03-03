@@ -1,0 +1,54 @@
+.accordion {
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-mid);
+  transition: color 0.15s ease;
+}
+
+.header:hover {
+  color: var(--ink);
+}
+
+.chevron {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.6;
+}
+
+.title {
+  flex: 1;
+  text-align: left;
+}
+
+.count {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  background: var(--surface);
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 4px;
+}

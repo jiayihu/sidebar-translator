@@ -24,7 +24,9 @@ chrome.action.onClicked.addListener((tab) => {
     openedTabs.add(tabId);
     // Both calls must stay in the same synchronous tick so open() is still
     // within the user-gesture context. Chaining with .then() loses it.
-    chrome.sidePanel.setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH }).catch(console.error);
+    chrome.sidePanel
+      .setOptions({ tabId, enabled: true, path: SIDEPANEL_PATH })
+      .catch(console.error);
     chrome.sidePanel.open({ tabId }).catch(console.error);
   }
 });
@@ -54,6 +56,16 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   tabPorts.delete(tabId);
 });
 
+// Notify sidebar when a tab is refreshed (navigated to same URL or reloaded)
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    const port = tabPorts.get(tabId);
+    if (port) {
+      port.postMessage({ type: 'PAGE_REFRESHED' } as Message);
+    }
+  }
+});
+
 // Relay messages between content script and side panel
 chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) => {
   const senderTabId = sender.tab?.id;
@@ -62,15 +74,13 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id == null) {
+        console.warn('[SidebarTranslator] EXTRACT_TEXT: no active tab found');
         sendResponse(null);
         return;
       }
-      chrome.tabs.sendMessage(activeTab.id, message, (response) => {
-        if (chrome.runtime.lastError) {
-          sendResponse(null);
-          return;
-        }
-        sendResponse(response);
+      const tabId = activeTab.id;
+      chrome.tabs.sendMessage(tabId, message, (response) => {
+        sendResponse(response ?? null);
       });
     });
     return true;
@@ -78,7 +88,6 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
 
   if (
     message.type === 'ELEMENT_HOVERED' ||
-    message.type === 'ELEMENT_CLICKED' ||
     message.type === 'NEW_TEXT_BLOCKS' ||
     message.type === 'TEXT_UPDATED'
   ) {
@@ -90,13 +99,16 @@ chrome.runtime.onMessage.addListener((message: Message, sender, sendResponse) =>
     return false;
   }
 
-  if (message.type === 'HIGHLIGHT_ELEMENT' || message.type === 'UNHIGHLIGHT_ELEMENT') {
+  if (
+    message.type === 'HIGHLIGHT_ELEMENT' ||
+    message.type === 'UNHIGHLIGHT_ELEMENT' ||
+    message.type === 'SCROLL_TO_ELEMENT' ||
+    message.type === 'SET_MODE'
+  ) {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       const activeTab = tabs[0];
       if (activeTab?.id != null) {
-        chrome.tabs.sendMessage(activeTab.id, message, () => {
-          void chrome.runtime.lastError; // acknowledge to suppress unchecked warning
-        });
+        chrome.tabs.sendMessage(activeTab.id, message);
       }
     });
     return false;
