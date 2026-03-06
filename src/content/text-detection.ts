@@ -4,6 +4,14 @@ export const BLOCK_LEVEL_TAGS = new Set([
   'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
   'LI', 'BLOCKQUOTE', 'TD', 'TH', 'CAPTION',
   'FIGCAPTION', 'SUMMARY', 'DT', 'DD',
+]);
+
+const GENERIC_CONTAINER_TAGS = new Set([
+  ...BLOCK_LEVEL_TAGS,
+  'DIV',
+]);
+
+const SECTIONING_TAGS = new Set([
   'ARTICLE', 'SECTION', 'HEADER', 'FOOTER', 'MAIN', 'ASIDE',
 ]);
 
@@ -28,16 +36,43 @@ export function shouldSkip(el: Element): boolean {
   return false;
 }
 
+function isSectioningContainer(el: HTMLElement): boolean {
+  const role = el.getAttribute('role');
+  return SECTIONING_TAGS.has(el.tagName) || role === 'article' || role === 'main';
+}
+
+function isNamedTextContainer(el: HTMLElement): boolean {
+  if (el.hasAttribute('data-item-type') || el.hasAttribute('data-text-type')) {
+    return true;
+  }
+
+  const selector = el.getAttribute('data-selector');
+  return selector !== null && /(message|item|entry|card|cell|title|heading|content|body|caption|description)/i.test(selector);
+}
+
 export function getBlockParent(node: Node, boundary: Node): HTMLElement | null {
   let current: Node | null = node.parentNode;
+  let genericFallback: HTMLElement | null = null;
+  let sectionFallback: HTMLElement | null = null;
+
   while (current && current !== boundary) {
     if (current instanceof HTMLElement) {
-      if (BLOCK_LEVEL_TAGS.has(current.tagName)) return current;
-      if (current.getAttribute('role') === 'article') return current;
+      if (BLOCK_LEVEL_TAGS.has(current.tagName) || isNamedTextContainer(current)) {
+        return current;
+      }
+
+      if (genericFallback === null && GENERIC_CONTAINER_TAGS.has(current.tagName)) {
+        genericFallback = current;
+      }
+
+      if (sectionFallback === null && isSectioningContainer(current)) {
+        sectionFallback = current;
+      }
     }
     current = current.parentNode;
   }
-  return node.parentElement;
+
+  return genericFallback ?? sectionFallback ?? node.parentElement;
 }
 
 export function getPageSection(el: HTMLElement): PageSection {

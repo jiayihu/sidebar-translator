@@ -1,5 +1,93 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`text detection > babbel dialogue: should split dialogue turns instead of merging them into one main block 1`] = `
+[
+  {
+    "section": "other",
+    "text": "Babbel.com",
+  },
+  {
+    "section": "other",
+    "text": "4/13",
+  },
+  {
+    "section": "other",
+    "text": "4/13",
+  },
+  {
+    "section": "main",
+    "text": "Complete the dialogue",
+  },
+  {
+    "section": "main",
+    "text": "Arne finds his elderly neighbour, Mrs Wilbers, lying on the floor
+                                in the hallway…",
+  },
+  {
+    "section": "main",
+    "text": "Oh nein, Frau Wilbers! Fehlt Ihnen etwas?",
+  },
+  {
+    "section": "main",
+    "text": "Oh no, Mrs Wilbers! Is something wrong with you (formal)?
+                                      (lit. Are you lacking something?)",
+  },
+  {
+    "section": "main",
+    "text": "Ich weiß nicht … ich hatte einen kleinen Unfall mit meinem Rollator.",
+  },
+  {
+    "section": "main",
+    "text": "I don't know… I had a little accident with my walker.",
+  },
+  {
+    "section": "main",
+    "text": "Sie haben eine Wunde am Kopf! Ich glaube, Sie sollten schnell zum Arzt.",
+  },
+  {
+    "section": "main",
+    "text": "You have a wound on (your) head! I think you should go
+                                      quickly to the doctor.",
+  },
+  {
+    "section": "main",
+    "text": "Ach nein, es geht schon. Ich habe keine Schmerzen .",
+  },
+  {
+    "section": "main",
+    "text": "Oh no, it's fine. I'm not in pain (lit. I have no
+                                      pains).",
+  },
+  {
+    "section": "main",
+    "text": "Aber Sie bluten doch! Wie ist der Unfall überhaupt passiert?",
+  },
+  {
+    "section": "main",
+    "text": "But you're bleeding! How did the accident even happen?",
+  },
+  {
+    "section": "main",
+    "text": "Ich glaube, ich bin ein bisschen zu schnell die Treppe
+                                        runtergefahren …",
+  },
+  {
+    "section": "main",
+    "text": "I think I came down the stairs a little too quickly…",
+  },
+  {
+    "section": "main",
+    "text": "Mit Ihrem Rollator? Frau Wilbers, ich mache mir wirklich
+                                        Sorgen um Sie!",
+  },
+  {
+    "section": "main",
+    "text": "With your walker? Mrs Wilbers, I'm really worried about
+                                      you!",
+  },
+]
+`;
+
 exports[`text detection > datepicker calendar: should detect day names but not digit-only cells 1`] = `
 [
   {

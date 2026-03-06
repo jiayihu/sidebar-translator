@@ -1,9 +1,17 @@
-export type PageSection = 'header' | 'nav' | 'main' | 'aside' | 'footer' | 'article' | 'section' | 'other';
+export type PageSection =
+  | 'header'
+  | 'nav'
+  | 'main'
+  | 'aside'
+  | 'footer'
+  | 'article'
+  | 'section'
+  | 'other';
 
 export interface TextBlock {
   id: string;
   text: string;
-  section: PageSection;
+  section?: PageSection;
 }
 
 export type Message =
