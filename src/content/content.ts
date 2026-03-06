@@ -1,5 +1,6 @@
-import type { Message, PageSection, TextBlock } from '../lib/messages';
+import type { Message, TextBlock } from '../lib/messages';
 import { getSettings } from '../lib/storage';
+import { detectTextBlocks } from './text-detection';
 
 // ─── Helper: Safe message sending ─────────────────────────────────────────────
 
@@ -21,18 +22,6 @@ function safeSendMessage(message: Message): boolean {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const BLOCK_LEVEL_TAGS = new Set([
-  'P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
-  'LI', 'BLOCKQUOTE', 'TD', 'TH', 'CAPTION',
-  'FIGCAPTION', 'SUMMARY', 'DT', 'DD',
-  'ARTICLE', 'SECTION', 'HEADER', 'FOOTER', 'MAIN', 'ASIDE',
-]);
-
-const SKIP_TAGS = new Set([
-  'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEXTAREA', 'SELECT', 'OPTION',
-  'CODE', 'PRE', 'BUTTON', 'INPUT', 'LABEL', 'SVG', 'MATH',
-]);
 
 const ST_ATTR = 'data-st-id';
 const HIGHLIGHT_CLASS = 'st-highlight';
@@ -120,54 +109,6 @@ function isHidden(el: Element): boolean {
   return false;
 }
 
-function shouldSkip(node: Node): boolean {
-  if (node.nodeType !== Node.ELEMENT_NODE) return false;
-  const el = node as Element;
-  if (SKIP_TAGS.has(el.tagName)) return true;
-  if (el.getAttribute('aria-hidden') === 'true') return true;
-  return false;
-}
-
-function getBlockParent(node: Node): HTMLElement | null {
-  let current: Node | null = node.parentNode;
-  while (current && current !== document.body) {
-    if (current instanceof HTMLElement) {
-      const tag = current.tagName;
-      if (BLOCK_LEVEL_TAGS.has(tag)) return current;
-      if (current.getAttribute('role') === 'article') return current;
-    }
-    current = current.parentNode;
-  }
-  return node.parentElement;
-}
-
-function getPageSection(el: HTMLElement): PageSection {
-  // Check explicit role first
-  const role = el.getAttribute('role');
-  if (role === 'banner') return 'header';
-  if (role === 'navigation') return 'nav';
-  if (role === 'main') return 'main';
-  if (role === 'complementary') return 'aside';
-  if (role === 'contentinfo') return 'footer';
-  if (role === 'article') return 'article';
-
-  // Walk up the DOM to find the nearest semantic container
-  let current: HTMLElement | null = el;
-  while (current && current !== document.body) {
-    const currentTag = current.tagName;
-    if (currentTag === 'HEADER') return 'header';
-    if (currentTag === 'NAV') return 'nav';
-    if (currentTag === 'MAIN') return 'main';
-    if (currentTag === 'ASIDE') return 'aside';
-    if (currentTag === 'FOOTER') return 'footer';
-    if (currentTag === 'ARTICLE') return 'article';
-    if (currentTag === 'SECTION') return 'section';
-    current = current.parentElement;
-  }
-
-  return 'other';
-}
-
 // ─── Text Extraction ──────────────────────────────────────────────────────────
 
 /** FNV-1a 32-bit hash → base-36 string (short and deterministic) */
@@ -221,51 +162,12 @@ function extractTextBlocks(root: Element = document.body): TextBlock[] {
     hashCounts.clear();
   }
 
-  const blockMap = new Map<HTMLElement, string[]>();
+  const detected = detectTextBlocks(root, { isHidden });
 
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-    acceptNode(node) {
-      // Skip nodes inside certain tags
-      let parent: Node | null = node.parentNode;
-      while (parent && parent !== document.body) {
-        if (parent instanceof Element && shouldSkip(parent)) {
-          return NodeFilter.FILTER_REJECT;
-        }
-        parent = parent.parentNode;
-      }
-
-      const text = node.textContent?.trim() ?? '';
-      if (!text) return NodeFilter.FILTER_SKIP;
-
-      const el = node.parentElement;
-      if (!el || isHidden(el)) return NodeFilter.FILTER_SKIP;
-
-      return NodeFilter.FILTER_ACCEPT;
-    },
+  return detected.map(({ text, element, section }) => {
+    const id = assignId(element, text);
+    return { id, text, section };
   });
-
-  let node: Node | null;
-  while ((node = walker.nextNode())) {
-    const textNode = node as Text;
-    const blockEl = getBlockParent(textNode);
-    if (!blockEl) continue;
-    if (isHidden(blockEl)) continue;
-
-    const texts = blockMap.get(blockEl) ?? [];
-    texts.push(textNode.textContent?.trim() ?? '');
-    blockMap.set(blockEl, texts);
-  }
-
-  const blocks: TextBlock[] = [];
-  for (const [el, texts] of blockMap) {
-    const text = texts.join(' ').trim();
-    if (!text) continue;
-    const id = assignId(el, text);
-    const section = getPageSection(el);
-    blocks.push({ id, text, section });
-  }
-
-  return blocks;
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────

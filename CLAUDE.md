@@ -69,3 +69,6 @@ Content script attaches a `MutationObserver` after initial extraction with 400ms
 ## Workflow
 - After making code edits, always run `npm run build` to verify the build succeeds before committing.
 - After a successful build, commit the changes (do not wait for the user to ask).
+
+## Extension Update Safety
+- Keep changes to `src/lib/messages.ts` **backward-compatible** (additive only — new message types or optional fields). Breaking changes cause errors in already-open tabs that still run the old content script after an extension update, since content scripts are not automatically reloaded when the service worker updates.

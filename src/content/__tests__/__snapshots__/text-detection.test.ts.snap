@@ -1,0 +1,34 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`text detection > datepicker calendar: should detect day names but not digit-only cells 1`] = `
+[
+  {
+    "section": "other",
+    "text": "Mo",
+  },
+  {
+    "section": "other",
+    "text": "Di",
+  },
+  {
+    "section": "other",
+    "text": "Mi",
+  },
+  {
+    "section": "other",
+    "text": "Do",
+  },
+  {
+    "section": "other",
+    "text": "Fr",
+  },
+  {
+    "section": "other",
+    "text": "Sa",
+  },
+  {
+    "section": "other",
+    "text": "So",
+  },
+]
+`;
