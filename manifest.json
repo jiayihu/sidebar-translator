@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Sidebar Translator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Translate in a sidebar without changing the original content. Powered by Chrome's built-in AI for instant, accurate translations.",
   "homepage_url": "https://github.com/jiayihu/sidebar-translator",
   "icons": {
@@ -10,15 +10,24 @@
     "48": "public/icons/icon48.png",
     "128": "public/icons/icon128.png"
   },
-  "permissions": ["sidePanel", "activeTab", "storage"],
+  "permissions": [
+    "sidePanel",
+    "activeTab",
+    "storage"
+  ],
   "background": {
     "service_worker": "src/background/background.ts",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["src/content/content.ts"],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/content/content.ts"
+      ],
       "run_at": "document_idle"
     }
   ],

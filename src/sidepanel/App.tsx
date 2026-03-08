@@ -29,7 +29,7 @@ async function translateRaw(
 ): Promise<TranslationBlock[]> {
   // Same language on both sides — return originals without hitting any API
   if (sourceLang !== 'auto' && sourceLang === targetLang) {
-    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section }));
+    return rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section ?? 'other' }));
   }
 
   const translator = await getTranslator(sourceLang);
@@ -39,7 +39,7 @@ async function translateRaw(
     id: b.id,
     original: b.text,
     translated: translated[i] ?? b.text,
-    section: b.section,
+    section: b.section ?? 'other',
   }));
 }
 
@@ -127,7 +127,7 @@ export default function App() {
     try {
       const detected = await detectPageLanguage(raw, pageLangRef.current);
       if (detected && langMatches(detected, tgt)) {
-        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
+        setBlocks(raw.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section ?? 'other' })));
         setStatus('same-lang');
         return;
       }
@@ -178,7 +178,7 @@ export default function App() {
 
         const detected = await detectPageLanguage(rawBlocks, response.pageLang);
         if (detected && langMatches(detected, tgt)) {
-          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section })));
+          setBlocks(rawBlocks.map((b) => ({ id: b.id, original: b.text, translated: b.text, section: b.section ?? 'other' })));
           setStatus('same-lang');
           return;
         }

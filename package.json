@@ -1,12 +1,14 @@
 {
   "name": "sidebar-translator",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "vite build --watch",
     "build": "vite build",
     "test": "vitest run",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "release": "node scripts/release.js"
   },
   "dependencies": {
     "react": "^18.3.1",

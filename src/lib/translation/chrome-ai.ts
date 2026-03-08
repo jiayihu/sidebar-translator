@@ -68,9 +68,9 @@ export async function detectPageLanguage(
 ): Promise<string | null> {
   if ('LanguageDetector' in self) {
     try {
-      const avail = await LanguageDetector.availability();
+      const avail = await LanguageDetector!.availability();
       if (avail !== 'no') {
-        const detector = await LanguageDetector.create({
+        const detector = await LanguageDetector!.create({
           monitor: (m) => {
             m.addEventListener('downloadprogress', (e: Event) => {
               const loaded = (e as ProgressEvent).loaded;
@@ -234,7 +234,7 @@ export class ChromeAITranslator implements ITranslator {
       // throw a special error that the UI can handle
       // Note: 'downloading' is not in the official TypeScript types but Chrome may
       // return it in some cases, so we handle it defensively alongside 'downloadable'
-      if ((availability === 'downloadable' || availability === 'downloading') && !hasUserGesture) {
+      if ((availability === 'downloadable' || (availability as string) === 'downloading') && !hasUserGesture) {
         throw new TranslatorDownloadRequiredError(actualSourceLang, normalizedTargetLang);
       }
 
